@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TV launcher banner: an ant on dark soil. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path android:fillColor="#2B1E14" android:pathData="M0,0h320v180h-320z" />
+    <path android:fillColor="#4A3726" android:pathData="M0,120h320v60h-320z" />
+    <path android:fillColor="#0E0907" android:pathData="M130,90m-16,0a16,11 0,1 1,32 0a16,11 0,1 1,-32 0" />
+    <path android:fillColor="#0E0907" android:pathData="M165,90m-13,0a13,9 0,1 1,26 0a13,9 0,1 1,-26 0" />
+    <path android:fillColor="#0E0907" android:pathData="M195,90m-11,0a11,10 0,1 1,22 0a11,10 0,1 1,-22 0" />
+    <path android:strokeColor="#0E0907" android:strokeWidth="3"
+        android:pathData="M160,95L145,115M165,97L165,118M170,95L185,115M160,85L145,65M165,83L165,62M170,85L185,65M203,84L222,70M203,96L222,110" />
+</vector>
