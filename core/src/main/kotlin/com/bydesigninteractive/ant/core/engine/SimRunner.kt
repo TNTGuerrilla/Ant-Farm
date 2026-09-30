@@ -1,5 +1,7 @@
 package com.bydesigninteractive.ant.core.engine
 
+import com.badlogic.gdx.Gdx
+import com.bydesigninteractive.ant.core.APP_LOG_TAG
 import com.bydesigninteractive.ant.sim.World
 import java.util.concurrent.ConcurrentLinkedQueue
 
@@ -30,7 +32,9 @@ class SimRunner(
 
     @Volatile private var running = false
 
+    /** Starts the thread. A second call while it is alive does nothing. */
     fun start() {
+        if (thread?.isAlive == true) return
         running = true
         thread = Thread(::loop, "simulation").apply {
             isDaemon = true
@@ -45,7 +49,9 @@ class SimRunner(
     /** Ends the thread after its current tick and waits for it. */
     fun stop() {
         running = false
-        thread?.join(STOP_WAIT_MS)
+        val t = thread
+        t?.join(STOP_WAIT_MS)
+        if (t != null && t.isAlive) log("simulation thread did not stop within $STOP_WAIT_MS ms")
         thread = null
     }
 
@@ -54,7 +60,22 @@ class SimRunner(
         thread?.join(millis)
     }
 
+    private fun log(message: String) {
+        Gdx.app?.log(APP_LOG_TAG, message)
+    }
+
     private fun loop() {
+        try {
+            runLoop()
+        } catch (e: InterruptedException) {
+            // asked to end
+        } catch (e: Throwable) {
+            published.failed = e
+            Gdx.app?.error(APP_LOG_TAG, "simulation thread failed at tick ${world.tick}", e)
+        }
+    }
+
+    private fun runLoop() {
         schedule.start(clock.nanos())
         published.publish(world, clock.nanos(), stats, schedule)
         while (running && world.tick < tickLimit) {
@@ -73,14 +94,18 @@ class SimRunner(
             val t1 = clock.nanos()
             stats.record(t1 - t0, t1)
             published.publish(world, t1, stats, schedule)
+            val resetsBefore = schedule.resets
             schedule.ticked(clock.nanos())
+            if (schedule.resets > resetsBefore) {
+                log("tick schedule reset to now at tick ${world.tick} (resets: ${schedule.resets})")
+            }
         }
     }
 
     private fun applyCommands() {
         while (true) {
             when (val c = commands.poll() ?: return) {
-                is Command.SetSpeed -> schedule.setInterval(intervalFor(c.speed), clock.nanos())
+                is Command.SetSpeed -> if (c.speed > 0f) schedule.setInterval(intervalFor(c.speed), clock.nanos())
                 Command.Pause -> {
                     paused = true
                     published.paused = true

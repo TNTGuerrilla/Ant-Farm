@@ -32,6 +32,9 @@ class Published(world: World) {
 
     @Volatile var paused = false
 
+    /** Set if the simulation thread died on an exception; the render side may show it. */
+    @Volatile var failed: Throwable? = null
+
     private var focusX = world.surface.entranceX
     private var focusY = world.surface.entranceY
     private val tileVersions = LongArray(world.nest.tilesX * world.nest.tilesY)
