@@ -21,6 +21,13 @@ data class AntParams(
     val maxFollow: Float = 0.66f,
     val trailTurnGain: Float = 3f,
     val trailLossFraction: Float = 0.3f,
+    // Trail choice at the nest exit (section 5): forks are chosen by relative trail strength, 74 to
+    // 83% correct per junction, and Beckers 1990 collective choice follows Deneubourg's
+    // (k + s)^n choice function over the sampled directions.
+    val exitDirections: Int = 16,
+    val exitSenseRadius: Float = 40f,
+    val exitChoiceExponent: Float = 2f,
+    val exitChoiceK: Float = 1f,
     // Trail laying (section 5)
     val markChancePerMm: Float = 0.045f,
     val markAmount: Float = 1f,

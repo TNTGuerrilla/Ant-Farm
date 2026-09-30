@@ -7,6 +7,7 @@ import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -24,6 +25,7 @@ internal object Forager {
         when (a.state) {
             AntState.EXIT -> if (NestMotion.goUp(w, a)) {
                 w.exitNest(a)
+                chooseExitTrail(w, a)
                 a.state = AntState.SEARCH
             }
             AntState.UNLOAD -> unload(w, a)
@@ -103,6 +105,47 @@ internal object Forager {
             }
         }
         SurfaceMotion.advance(w, a, p.surfaceSpeed)
+    }
+
+    /**
+     * A forager just out of the nest samples the trail on a ring around the entrance. It joins a
+     * trail with a chance that rises steeply with the total, and picks a direction by Deneubourg's
+     * choice function (k + s_i)^n / sum (k + s_j)^n, so stronger trails win more than their share
+     * (section 5). Otherwise it keeps its random exit heading.
+     */
+    fun chooseExitTrail(w: World, a: Ant) {
+        val p = w.params
+        val s = w.surface
+        val n = p.exitDirections
+        val samples = FloatArray(n)
+        var total = 0f
+        for (i in 0 until n) {
+            val angle = i * 2f * PI.toFloat() / n
+            samples[i] = s.trail.get(
+                s.entranceX + cos(angle) * p.exitSenseRadius,
+                s.entranceY + sin(angle) * p.exitSenseRadius,
+            )
+            total += samples[i]
+        }
+        val t2 = total * total
+        val join = p.maxFollow * t2 / (t2 + p.trailThreshold * p.trailThreshold)
+        if (w.rng.nextFloat() >= join) return
+        var sum = 0f
+        for (i in 0 until n) {
+            samples[i] = (p.exitChoiceK + samples[i]).pow(p.exitChoiceExponent)
+            sum += samples[i]
+        }
+        var pick = w.rng.nextFloat() * sum
+        var chosen = n - 1
+        for (i in 0 until n) {
+            pick -= samples[i]
+            if (pick < 0f) {
+                chosen = i
+                break
+            }
+        }
+        a.heading = chosen * 2f * PI.toFloat() / n
+        a.onTrail = true
     }
 
     /** An outbound ant on a trail keeps walking away from home, never back along it. */
