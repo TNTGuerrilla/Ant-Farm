@@ -19,6 +19,15 @@ package com.bydesigninteractive.ant.sim.ant
  *     busier-source share 0.83, 0.88, 0.81, 0.86, all 4 seeds at 0.7 or more (3 needed).
  *   - Crowded switch: loser share after the switch 0.89, 0.15, 0.63, 0.68, 3 seeds at 0.5 or
  *     more (3 needed). This check has no spare seed; it is the thinnest margin.
+ * - crowdLevel 3 (from 4) and saturationLevel 10 (from 20): recalibrated in M1b-2a Task 1, when
+ *   the 4 mm height grid changed the ground and the crowded switch fell to 0 of 4 (loser share
+ *   0.10, 0.19, 0.34, 0.31). crowdLevel 3 alone gave 2 of 4 (0.69, 0.27, 0.80, 0.34); adding
+ *   saturationLevel 10 gave 3 of 4. Final values, seeds 1 to 4:
+ *   - 30 foragers: following 0.001, 0.113, 0.001, 0.004, mean 0.030 against a 0.15 limit.
+ *   - 150 foragers: following 0.450, 0.379, 0.347, 0.397, mean 0.393 against a 0.3 limit;
+ *     busier-source share 0.68, 0.91, 0.76, 0.84, 3 seeds at 0.7 or more (3 needed).
+ *   - Crowded switch: loser share 0.76, 0.22, 0.84, 0.67, 3 seeds at 0.5 or more (3 needed).
+ *   Margins are thin: two checks have no spare seed.
  * - maxFollow 0.7 (from 0.66): a slightly higher ceiling on joining a trail.
  * - exitChoiceExponent 3 (from 2): a steeper choice among trails at the exit, so the colony
  *   breaks symmetry between equal sources.
@@ -53,9 +62,9 @@ data class AntParams(
     // Trail laying (section 5)
     val markChancePerMm: Float = 0.045f,
     val markAmount: Float = 2.25f,
-    val saturationLevel: Float = 20f,
+    val saturationLevel: Float = 10f,
     val crowdRadius: Float = 10f,
-    val crowdLevel: Int = 4,
+    val crowdLevel: Int = 3,
     val nonLayerFraction: Float = 0.14f,
     val desiredMin: Float = 0.3f,
     val desiredMax: Float = 0.9f,

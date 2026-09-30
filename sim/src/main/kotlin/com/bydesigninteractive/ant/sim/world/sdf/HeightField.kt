@@ -6,6 +6,7 @@ import com.bydesigninteractive.ant.sim.world.CHUNK_MM
 import com.bydesigninteractive.ant.sim.world.ChunkedField
 import com.bydesigninteractive.ant.sim.world.SURFACE_MM
 import kotlin.math.floor
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /** One dumped pellet (1 mm3) spread over its 1 cm2 field cell raises the ground 0.01 mm. */
@@ -13,13 +14,16 @@ const val PELLET_HEIGHT = 0.01f
 
 /**
  * The ground: z = h(x, y) in surface millimeters. The base relief is seeded value noise (rolling
- * of about +/-15 mm over about 30 cm, bumps of about 1.5 mm), cached per 50 cm chunk on a 2 mm
- * grid the first time the chunk is used. Dumped spoil raises it. Coordinates outside the map are
+ * of about +/-15 mm over about 30 cm, bumps of about 1.5 mm), cached per 50 cm chunk on a 4 mm
+ * grid of 16-bit values in micrometer steps (about 31 KB per chunk, 8 MB for the whole map) the
+ * first time the chunk is used. The 1.5 mm bumps have a 20 mm scale, which the grid resolves. Dumped spoil raises it. Coordinates outside the map are
  * clamped to its edge. Not thread-safe: it reuses a scratch array (one simulation thread).
  */
 class HeightField(private val seed: Long, private val spoil: ChunkedField) {
-    private val grids = arrayOfNulls<FloatArray>(CHUNKS * CHUNKS)
+    private val grids = arrayOfNulls<ShortArray>(CHUNKS * CHUNKS)
     private val slopeScratch = FloatArray(2)
+
+    private fun at(grid: ShortArray, index: Int): Float = grid[index] * HEIGHT_STEP
 
     /** The seeded relief without spoil. */
     fun base(x: Float, y: Float): Float {
@@ -36,10 +40,10 @@ class HeightField(private val seed: Long, private val spoil: ChunkedField) {
         val fu = u - i
         val fv = v - j
         val row = CELLS + 1
-        val h00 = grid[j * row + i]
-        val h10 = grid[j * row + i + 1]
-        val h01 = grid[(j + 1) * row + i]
-        val h11 = grid[(j + 1) * row + i + 1]
+        val h00 = at(grid, j * row + i)
+        val h10 = at(grid, j * row + i + 1)
+        val h01 = at(grid, (j + 1) * row + i)
+        val h11 = at(grid, (j + 1) * row + i + 1)
         return (h00 + (h10 - h00) * fu) + ((h01 + (h11 - h01) * fu) - (h00 + (h10 - h00) * fu)) * fv
     }
 
@@ -81,10 +85,10 @@ class HeightField(private val seed: Long, private val spoil: ChunkedField) {
         val fu = u - i
         val fv = v - j
         val row = CELLS + 1
-        val h00 = grid[j * row + i]
-        val h10 = grid[j * row + i + 1]
-        val h01 = grid[(j + 1) * row + i]
-        val h11 = grid[(j + 1) * row + i + 1]
+        val h00 = at(grid, j * row + i)
+        val h10 = at(grid, j * row + i + 1)
+        val h01 = at(grid, (j + 1) * row + i)
+        val h11 = at(grid, (j + 1) * row + i + 1)
         val a = h00 + (h10 - h00) * fu
         val b = h01 + (h11 - h01) * fu
         val base = a + (b - a) * fv
@@ -124,14 +128,15 @@ class HeightField(private val seed: Long, private val spoil: ChunkedField) {
         return (a + (b - a) * fv) * PELLET_HEIGHT
     }
 
-    private fun build(kx: Int, ky: Int): FloatArray {
+    private fun build(kx: Int, ky: Int): ShortArray {
         val row = CELLS + 1
-        val grid = FloatArray(row * row)
+        val grid = ShortArray(row * row)
         for (j in 0..CELLS) for (i in 0..CELLS) {
             val x = kx * CHUNK_MM + i * GRID_MM
             val y = ky * CHUNK_MM + j * GRID_MM
-            grid[j * row + i] = RELIEF * noise(seed xor RELIEF_SALT, x / RELIEF_SCALE, y / RELIEF_SCALE) +
+            val h = RELIEF * noise(seed xor RELIEF_SALT, x / RELIEF_SCALE, y / RELIEF_SCALE) +
                 BUMPS * noise(seed xor BUMP_SALT, x / BUMP_SCALE, y / BUMP_SCALE)
+            grid[j * row + i] = (h / HEIGHT_STEP).roundToInt().toShort()
         }
         return grid
     }
@@ -153,15 +158,19 @@ class HeightField(private val seed: Long, private val spoil: ChunkedField) {
         return a + (b - a) * sy
     }
 
-    private companion object {
-        const val MAX = SURFACE_MM.toFloat()
-        const val GRID_MM = 2f
-        const val CELLS = (CHUNK_MM / 2)
-        const val RELIEF = 15f
-        const val RELIEF_SCALE = 300f
-        const val BUMPS = 1.5f
-        const val BUMP_SCALE = 20f
-        const val RELIEF_SALT = 0x6E11L
-        const val BUMP_SALT = 0x6E12L
+    companion object {
+        /** Bytes of one chunk's grid (for the memory budget). */
+        fun bytesPerChunk(): Int = (CELLS + 1) * (CELLS + 1) * 2
+
+        private const val MAX = SURFACE_MM.toFloat()
+        private const val GRID_MM = 4f
+        private const val CELLS = CHUNK_MM / 4
+        private const val HEIGHT_STEP = 0.001f
+        private const val RELIEF = 15f
+        private const val RELIEF_SCALE = 300f
+        private const val BUMPS = 1.5f
+        private const val BUMP_SCALE = 20f
+        private const val RELIEF_SALT = 0x6E11L
+        private const val BUMP_SALT = 0x6E12L
     }
 }

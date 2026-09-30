@@ -63,6 +63,19 @@ class HeightFieldTest {
     }
 
     @Test
+    fun aChunkGridIsCompact() {
+        // 126 x 126 shorts at 4 mm spacing: about 31 KB per 50 cm chunk, 8 MB for the map.
+        assertEquals(126 * 126 * 2, HeightField.bytesPerChunk())
+    }
+
+    @Test
+    fun heightsKeepMicronPrecision() {
+        val h = ground.base(3333.3f, 4444.4f)
+        assertEquals(h, ground.base(3333.3f, 4444.4f))
+        assertTrue(abs(h) <= 16.5f)
+    }
+
+    @Test
     fun distanceFollowsTheSlopeOnReliefAndSpoil() {
         spoil.add(3205f, 4325f, 100f)
         val out = FloatArray(2)
