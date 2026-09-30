@@ -1,6 +1,8 @@
 package com.bydesigninteractive.ant.sim.world
 
 import com.bydesigninteractive.ant.sim.util.hash
+import com.bydesigninteractive.ant.sim.world.sdf.HeightField
+import com.bydesigninteractive.ant.sim.world.sdf.SurfaceSdf
 import java.util.Random
 import kotlin.math.PI
 import kotlin.math.hypot
@@ -15,17 +17,23 @@ const val FIELD_CELL_MM = 10
  * The ground around the nest: chunk content generated on demand, the scalar fields ants read and
  * write, and the food sources.
  */
-class SurfaceMap(val seed: Long) {
+class SurfaceMap(val seed: Long, rocks: Boolean = true) {
     val generator = SurfaceGenerator(seed)
     val trail = ChunkedField()
     val homeScent = ChunkedField()
 
     /** Soil pellets dumped by diggers, as a count per field cell. */
     val spoil = ChunkedField()
+
+    /** The ground height field (reference section 13). */
+    val ground = HeightField(seed, spoil)
     val foods = ArrayList<FoodSource>()
     val entranceX = SURFACE_MM / 2f
     val entranceY = SURFACE_MM / 2f
     private val chunks = HashMap<Int, ChunkContent>()
+
+    /** The walkable surface as a signed distance function. */
+    val sdf = SurfaceSdf(this, rocks)
 
     fun chunk(cx: Int, cy: Int): ChunkContent {
         require(cx in 0 until CHUNKS && cy in 0 until CHUNKS) { "chunk ($cx, $cy) is outside the map" }
@@ -39,10 +47,15 @@ class SurfaceMap(val seed: Long) {
             val u = r.nextFloat()
             val d = 300f + u * u * 2700f
             val a = r.nextFloat() * 2f * PI.toFloat()
+            val quality = 0.5f + r.nextFloat() * 0.5f
+            val tall = 500f + r.nextFloat() * 700f
+            val px = entranceX + d * StrictMath.cos(a.toDouble()).toFloat()
+            val py = entranceY + d * StrictMath.sin(a.toDouble()).toFloat()
+            val base = ground.base(px, py)
             foods += FoodSource(
-                foods.size, FoodKind.HONEYDEW,
-                entranceX + d * StrictMath.cos(a.toDouble()).toFloat(), entranceY + d * StrictMath.sin(a.toDouble()).toFloat(),
-                radius = 15f, quality = 0.5f + r.nextFloat() * 0.5f,
+                foods.size, FoodKind.HONEYDEW, px, py,
+                radius = 12f, quality = quality,
+                z = base + tall - 30f, bodyRadius = 8f, stemRadius = 2.5f, stemBase = base - 5f,
             )
         }
     }
@@ -53,10 +66,13 @@ class SurfaceMap(val seed: Long) {
         repeat(count) {
             val d = 200f + r.nextFloat() * 1800f
             val a = r.nextFloat() * 2f * PI.toFloat()
+            val body = 3f + r.nextFloat() * 5f
+            val px = entranceX + d * StrictMath.cos(a.toDouble()).toFloat()
+            val py = entranceY + d * StrictMath.sin(a.toDouble()).toFloat()
             foods += FoodSource(
-                foods.size, FoodKind.PREY,
-                entranceX + d * StrictMath.cos(a.toDouble()).toFloat(), entranceY + d * StrictMath.sin(a.toDouble()).toFloat(),
-                radius = 4f, quality = 0.8f, loads = 20,
+                foods.size, FoodKind.PREY, px, py,
+                radius = body + 4f, quality = 0.8f, loads = 20,
+                z = ground.base(px, py) + body * 0.4f, bodyRadius = body,
             )
         }
     }
