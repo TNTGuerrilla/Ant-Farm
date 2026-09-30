@@ -23,7 +23,7 @@ The desktop app runs a young colony: scripted diggers extend the nest and script
 
 - **Nest:** the cross-section. The camera frames the dug part and zooms out as it grows, but never so far that an ant is shorter than 8 px on a 1080p screen.
 - **Surface, top:** the ground from above, with spoil and trail pheromone overlays.
-- **Surface, 2.5D:** a third-person camera behind a forager. Turning in place does not swing the camera; walking off does. A low-poly 3D surface replaces it in M1b.
+- **Surface, 3D debug:** ground mesh, rocks, stems and ants as simple shapes; the low-poly look arrives in M1b-2.
 
 Keys: Tab cycles views, Space pauses, 1/2/3 set speed 1x/4x/16x, WASD or arrows pan, +/- or the mouse wheel zoom, F follows the next forager, P toggles the trail overlay; in the 2.5D view the arrows pick the ant. `--seed=N` picks the world, and `--stub` runs the M0 stub (`.\gradlew.bat :desktop:run --args="--stub"`).
 
