@@ -1,7 +1,9 @@
 package com.bydesigninteractive.ant.core.render
 
 import com.bydesigninteractive.ant.sim.ant.Ant
+import com.bydesigninteractive.ant.core.engine.AntPose
 import com.bydesigninteractive.ant.sim.ant.Role
+import com.bydesigninteractive.ant.sim.ant.Space
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -72,5 +74,34 @@ class AntAnimatorTest {
         animator.advance(listOf(a), 0.0375f) // quarter stride: 0.75 mm at 20 mm/s
         val frameAfterQuarter = animator.frame(a)
         assert(frameBeforeQuarter != frameAfterQuarter) { "quarter stride should change frame" }
+    }
+
+    @Test
+    fun legsAdvanceWithDistanceWalked() {
+        val an = AntAnimator()
+        val p = AntPose().apply { id = 3; speed = 20f; space = Space.SURFACE }
+        an.observe(p)
+        p.x += 0.75f // a quarter stride
+        an.observe(p)
+        assertEquals(0.25f, an.phase(3), 1e-5f)
+    }
+
+    @Test
+    fun standingShowsTheNeutralFrame() {
+        val an = AntAnimator()
+        val p = AntPose().apply { id = 0; speed = 0f }
+        an.observe(p)
+        assertEquals(1, an.frame(p))
+    }
+
+    @Test
+    fun aSpaceChangeDoesNotCountAsWalking() {
+        val an = AntAnimator()
+        val p = AntPose().apply { id = 1; speed = 20f; space = Space.SURFACE; x = 4000f }
+        an.observe(p)
+        p.space = Space.NEST
+        p.x = 600f
+        an.observe(p)
+        assertEquals(0f, an.phase(1), 1e-6f)
     }
 }
