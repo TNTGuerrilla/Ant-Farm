@@ -23,13 +23,20 @@ object Scenarios {
         return w
     }
 
-    /** Gruter 2012: two identical feeders at equal [distance] on either side of the entrance. */
+    /**
+     * Gruter 2012: two identical feeders at equal [distance] on either side of the entrance, as
+     * small food blobs on gently rolling ground with no rocks, so the geometry matches M1's test.
+     */
     fun gruter(seed: Long, foragers: Int, distance: Float = 250f, quality: Float = 1f): World {
-        val w = World(seed)
+        val w = World(seed, rocks = false)
         w.predig(5)
         val s = w.surface
-        s.foods += FoodSource(0, FoodKind.HONEYDEW, s.entranceX - distance, s.entranceY, 15f, quality)
-        s.foods += FoodSource(1, FoodKind.HONEYDEW, s.entranceX + distance, s.entranceY, 15f, quality)
+        for ((id, x) in listOf(0 to s.entranceX - distance, 1 to s.entranceX + distance)) {
+            s.foods += FoodSource(
+                id, FoodKind.HONEYDEW, x, s.entranceY, 15f, quality,
+                z = s.ground.height(x, s.entranceY) + 3f, bodyRadius = 8f,
+            )
+        }
         repeat(foragers) { w.addAnt(Role.FORAGER) }
         return w
     }

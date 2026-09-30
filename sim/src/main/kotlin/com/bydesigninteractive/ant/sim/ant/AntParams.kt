@@ -6,8 +6,12 @@ package com.bydesigninteractive.ant.sim.ant
  * Calibrated against the Gruter 2012 scenario test (GruterScenarioTest). No stable trail forms
  * with 30 foragers; a trail with symmetry breaking forms with 150 foragers on one of two equal
  * sources, and a crowded colony switches to a richer source offered later:
- * - trailThreshold 1.96 (from 4): lowered so 150 foragers keep a trail while 30 do not.
- * - markAmount 2.25 (from 1): raised so trails at 150 foragers are strong enough to follow.
+ * - trailThreshold 1.2544 (M1 1.96, from 4): lowered 20% twice in M1b-1 so trail ants on the
+ *   3D surface lose the trail less often and join weaker trails, while 30 foragers still do not
+ *   keep one.
+ * - markAmount 17.0859375 (M1 2.25, from 1): raised 50% four times in M1b-1. The 3D field spreads
+ *   each mark over 8 voxels, so the same deposit reads lower than on the 2D map, and saturation
+ *   caps the gain; this is the lowest step at which 150 foragers follow trails often enough.
  * - trailDiffusion 0.025 (from 0.05): halved to keep trails narrow and concentrated.
  * - maxFollow 0.7 (from 0.66): a slightly higher ceiling on joining a trail.
  * - exitChoiceExponent 3 (from 2): a steeper choice among trails at the exit, so the colony
@@ -29,7 +33,7 @@ data class AntParams(
     // Trail sensing and following (sections 3 and 4)
     val senseAhead: Float = 10f,
     val senseAngle: Float = 0.5f,
-    val trailThreshold: Float = 1.96f,
+    val trailThreshold: Float = 1.2544f,
     val maxFollow: Float = 0.7f,
     val trailTurnGain: Float = 3f,
     val trailLossFraction: Float = 0.3f,
@@ -42,7 +46,7 @@ data class AntParams(
     val exitChoiceK: Float = 1f,
     // Trail laying (section 5)
     val markChancePerMm: Float = 0.045f,
-    val markAmount: Float = 2.25f,
+    val markAmount: Float = 17.0859375f,
     val saturationLevel: Float = 20f,
     val crowdRadius: Float = 10f,
     val crowdLevel: Int = 4,
