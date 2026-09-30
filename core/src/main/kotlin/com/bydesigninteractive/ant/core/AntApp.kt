@@ -30,6 +30,7 @@ import com.bydesigninteractive.ant.core.ui.DebugReadout
 import com.bydesigninteractive.ant.sim.World
 import com.bydesigninteractive.ant.sim.ant.Role
 import com.bydesigninteractive.ant.sim.ant.Space
+import com.bydesigninteractive.ant.sim.world.CHUNKS
 import com.bydesigninteractive.ant.sim.world.CHUNK_MM
 import java.util.Locale
 
@@ -83,6 +84,8 @@ class AntApp(private val label: String, private val world: World, private val tv
     private var showTrail = true
     private var logClock = 0f
     private var focusClock = FOCUS_EVERY_S
+    private var sentFocusView = -1
+    private var sentFocusChunk = -1
     private var failureLogged = false
     private var hudLines: List<String> = emptyList()
     private var hudAge = HUD_EVERY_S
@@ -189,11 +192,28 @@ class AntApp(private val label: String, private val world: World, private val tv
 
     /** Tells the simulation thread where the camera looks, for the published overlay. */
     private fun sendFocus() {
+        val x: Float
+        val y: Float
         when (view) {
-            View.NEST -> runner.send(Command.Focus(entranceX, entranceY))
-            View.SURFACE_TOP -> runner.send(Command.Focus(topCam.centerX, topCam.centerY))
-            View.SURFACE_3D -> runner.send(Command.Focus(chase.targetX, chase.targetY))
+            View.NEST -> {
+                x = entranceX
+                y = entranceY
+            }
+            View.SURFACE_TOP -> {
+                x = topCam.centerX
+                y = topCam.centerY
+            }
+            View.SURFACE_3D -> {
+                x = chase.targetX
+                y = chase.targetY
+            }
         }
+        // Each Focus resets the overlay schedule, so send one only when the chunk or view changes.
+        val chunk = (x / CHUNK_MM).toInt().coerceIn(0, CHUNKS - 1) + (y / CHUNK_MM).toInt().coerceIn(0, CHUNKS - 1) * CHUNKS
+        if (view.ordinal == sentFocusView && chunk == sentFocusChunk) return
+        sentFocusView = view.ordinal
+        sentFocusChunk = chunk
+        runner.send(Command.Focus(x, y))
     }
 
     private fun drawNest(dt: Float) {
@@ -235,7 +255,7 @@ class AntApp(private val label: String, private val world: World, private val tv
         val a = followed()
         when {
             a != null && a.space == Space.SURFACE -> chase.update(a.x, a.y, a.z, a.fx, a.fy, a.fz, a.nx, a.ny, a.nz, dt)
-            !chase.placed -> chase.update(entranceX, entranceY, 0f, 1f, 0f, 0f, 0f, 0f, 1f, dt)
+            !chase.placed -> chase.update(entranceX, entranceY, renderer3d.groundHeight(entranceX, entranceY), 1f, 0f, 0f, 0f, 0f, 1f, dt)
         }
         renderer3d.draw(chase, drawn, states.foods)
     }
@@ -262,7 +282,7 @@ class AntApp(private val label: String, private val world: World, private val tv
         batch.setColor(0f, 0f, 0f, 0.55f)
         batch.draw(pixel, 6f, top - lines.size * lineH - 10f, Gdx.graphics.width * 0.62f, lines.size * lineH + 16f)
         batch.color = Color.WHITE
-        lines.forEachIndexed { i, line -> font.draw(batch, line, 16f, top - i * lineH) }
+        for (i in lines.indices) font.draw(batch, lines[i], 16f, top - i * lineH)
         batch.end()
     }
 

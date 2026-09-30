@@ -71,14 +71,16 @@ class SurfaceTopRenderer(
             overlay(cx, cy, showTrail)?.let { batch.draw(it, x, y, CHUNK_MM.toFloat(), CHUNK_MM.toFloat()) }
         }
 
-        for (f in foods) {
+        for (k in foods.indices) {
+            val f = foods[k]
             if (f.kind == FoodKind.HONEYDEW) batch.setColor(0.25f, 0.55f, 0.20f, 1f) else batch.setColor(0.75f, 0.45f, 0.20f, 1f)
             batch.draw(pixel, f.x - f.radius, f.y - f.radius, f.radius * 2, f.radius * 2)
         }
         batch.setColor(0.05f, 0.04f, 0.03f, 1f)
         batch.draw(pixel, entranceX - 4f, entranceY - 4f, 8f, 8f)
         batch.color = Color.WHITE
-        for (p in poses) {
+        for (k in poses.indices) {
+            val p = poses[k]
             if (p.space != Space.SURFACE) continue
             batch.draw(regions[animator.frame(p)], p.x - 2.5f, p.y - 1.25f, 2.5f, 1.25f, 5f, 2.5f, 1f, 1f, p.heading * MathUtils.radiansToDegrees)
         }

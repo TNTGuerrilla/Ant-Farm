@@ -37,6 +37,17 @@ class ChunkedField(
     /** The values of one chunk, row by row from its low-y edge, or null if it holds nothing. */
     fun chunk(cx: Int, cy: Int): FloatArray? = data[cx + cy * chunks]
 
+    /**
+     * Installs [values] (row by row, [chunkCells] squared, or null for an empty chunk) as chunk
+     * (cx, cy), keeping the array itself without copying. A read-only mirror of a published field
+     * uses this; the caller must not modify [values] afterwards, and must not call [step] or [add]
+     * on a field that shares arrays it does not own.
+     */
+    fun setChunk(cx: Int, cy: Int, values: FloatArray?) {
+        require(values == null || values.size == chunkCells * chunkCells) { "chunk size" }
+        data[cx + cy * chunks] = values
+    }
+
     fun allocatedChunks(): Int = data.count { it != null }
 
     fun max(): Float {

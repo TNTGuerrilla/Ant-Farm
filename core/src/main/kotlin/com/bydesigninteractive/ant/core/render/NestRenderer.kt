@@ -60,7 +60,8 @@ class NestRenderer(
             }
         }
         batch.color = Color.WHITE
-        for (p in poses) {
+        for (k in poses.indices) {
+            val p = poses[k]
             if (p.space != Space.NEST) continue
             batch.draw(regions[animator.frame(p)], p.x - 2.5f, -p.y - 1.25f, 2.5f, 1.25f, 5f, 2.5f, 1f, 1f, -p.heading * MathUtils.radiansToDegrees)
         }

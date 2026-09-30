@@ -36,8 +36,10 @@ import kotlin.math.floor
  * while this view draws smooth spheres. M1b-2 builds meshes from the same SDF, which fixes it.
  *
  * It reads only published state: rocks from [Published.rocks] and [Published.placed], foods and
- * ants from the caller. The ground is its own [HeightField] from the seed (base relief only; the
- * debug ground ignores the spoil mound), since the simulation's height field is not thread-safe.
+ * ants from the caller. The ground is its own [HeightField] from the seed (the base relief is a
+ * pure function of the seed), with a spoil field mirrored from the published overlays, since the
+ * simulation's height field is not thread-safe. The ground mesh is rebuilt when the published
+ * spoil near the camera changes.
  */
 class DebugSurfaceRenderer(seed: Long, private val published: Published) : Disposable {
     val camera = PerspectiveCamera(FOV, 1f, 1f).apply {
@@ -54,7 +56,10 @@ class DebugSurfaceRenderer(seed: Long, private val published: Published) : Dispo
     private val sphere = builder.createSphere(2f, 2f, 2f, 16, 12, Material(), attributes)
     private val cylinder = builder.createCylinder(2f, 1f, 2f, 10, Material(), attributes)
     private val box = builder.createBox(1f, 1f, 1f, Material(), attributes)
-    private val ground = HeightField(seed, ChunkedField())
+    private val spoil = ChunkedField()
+    private val ground = HeightField(seed, spoil)
+    private val spoilStamps = LongArray(CHUNKS * CHUNKS) { -1L }
+    private var groundDirty = false
     private val models = arrayOf(sphere, cylinder, box)
     private val pools = Array(models.size) { ArrayList<ModelInstance>() }
     private val used = IntArray(models.size)
@@ -73,6 +78,9 @@ class DebugSurfaceRenderer(seed: Long, private val published: Published) : Dispo
         camera.viewportHeight = h.toFloat()
     }
 
+    /** The ground height in mm at (x, y) as drawn, spoil included. Render thread only. */
+    fun groundHeight(x: Float, y: Float): Float = ground.height(x, y)
+
     fun draw(chase: ChaseCamera3, poses: List<AntPose>, foods: List<FoodView>) {
         camera.position.set(chase.eyeX, chase.eyeZ, -chase.eyeY)
         camera.up.set(chase.upX, chase.upZ, -chase.upY)
@@ -80,19 +88,28 @@ class DebugSurfaceRenderer(seed: Long, private val published: Published) : Dispo
         camera.update()
         val fx = chase.targetX
         val fy = chase.targetY
-        if (groundX.isNaN() || abs(fx - groundX) > REBUILD_MM || abs(fy - groundY) > REBUILD_MM) rebuildGround(fx, fy)
+        val ccx = floor(fx / CHUNK_MM).toInt()
+        val ccy = floor(fy / CHUNK_MM).toInt()
+        syncSpoil(ccx, ccy)
+        if (groundDirty || groundX.isNaN() || abs(fx - groundX) > REBUILD_MM || abs(fy - groundY) > REBUILD_MM) rebuildGround(fx, fy)
         used.fill(0)
         batch.begin(camera)
         groundInstance?.let { batch.render(it, environment) }
-        val ccx = floor(fx / CHUNK_MM).toInt()
-        val ccy = floor(fy / CHUNK_MM).toInt()
         for (cy in ccy - RING..ccy + RING) for (cx in ccx - RING..ccx + RING) {
             if (cx < 0 || cy < 0 || cx >= CHUNKS || cy >= CHUNKS) continue
             val rocks = published.rocks[cx + cy * CHUNKS] ?: continue
-            for (b in rocks) blob(b.cx, b.cy, b.cz, b.rx, b.ry, b.rz, ROCK)
+            for (k in rocks.indices) {
+                val b = rocks[k]
+                blob(b.cx, b.cy, b.cz, b.rx, b.ry, b.rz, ROCK)
+            }
         }
-        for (b in published.placed) blob(b.cx, b.cy, b.cz, b.rx, b.ry, b.rz, ROCK)
-        for (f in foods) {
+        val placed = published.placed
+        for (k in placed.indices) {
+            val b = placed[k]
+            blob(b.cx, b.cy, b.cz, b.rx, b.ry, b.rz, ROCK)
+        }
+        for (k in foods.indices) {
+            val f = foods[k]
             if (f.bodyRadius > 0f) blob(f.x, f.y, f.z, f.bodyRadius, f.bodyRadius, f.bodyRadius, FOOD)
             if (f.stemRadius > 0f) {
                 val i = next(CYLINDER, STEM)
@@ -100,7 +117,8 @@ class DebugSurfaceRenderer(seed: Long, private val published: Published) : Dispo
                 batch.render(i, environment)
             }
         }
-        for (a in poses) {
+        for (k in poses.indices) {
+            val a = poses[k]
             if (a.space != Space.SURFACE) continue
             if (abs(a.x - fx) > VIEW_MM || abs(a.y - fy) > VIEW_MM) continue
             xAxis.set(a.fx, a.fz, -a.fy)
@@ -146,6 +164,28 @@ class DebugSurfaceRenderer(seed: Long, private val published: Published) : Dispo
         return instance
     }
 
+    /**
+     * Copies the published spoil of the chunks around the camera chunk ([ccx], [ccy]) into this
+     * renderer's own spoil field whenever a chunk's overlay stamp changes, and marks the ground
+     * mesh stale if a chunk's values really changed. Published arrays are immutable, so they are
+     * shared, not copied.
+     */
+    private fun syncSpoil(ccx: Int, ccy: Int) {
+        for (cy in ccy - RING..ccy + RING) for (cx in ccx - RING..ccx + RING) {
+            if (cx < 0 || cy < 0 || cx >= CHUNKS || cy >= CHUNKS) continue
+            val key = cx + cy * CHUNKS
+            val chunk = published.overlays[key] ?: continue
+            if (spoilStamps[key] == chunk.stamp) continue
+            spoilStamps[key] = chunk.stamp
+            val fresh = chunk.spoil
+            val old = spoil.chunk(cx, cy)
+            if (fresh == null && old == null) continue
+            if (fresh != null && old != null && fresh.contentEquals(old)) continue
+            spoil.setChunk(cx, cy, fresh)
+            groundDirty = true
+        }
+    }
+
     /** A grid of the ground heights, 2 m across at 20 mm spacing, centered on (cx, cy). */
     private fun rebuildGround(cx: Float, cy: Float) {
         groundModel?.dispose()
@@ -178,6 +218,7 @@ class DebugSurfaceRenderer(seed: Long, private val published: Published) : Dispo
         groundInstance = ModelInstance(model)
         groundX = cx
         groundY = cy
+        groundDirty = false
     }
 
     override fun dispose() {
