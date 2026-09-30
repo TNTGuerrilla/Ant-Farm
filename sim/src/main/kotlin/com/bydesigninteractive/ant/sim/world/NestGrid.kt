@@ -75,6 +75,9 @@ class NestGrid(val generator: NestGenerator) {
 
     fun modifiedTileCount(): Int = cells.count { it != null }
 
+    /** A copy of a changed tile's cells (material ordinals, row by row), or null if never changed. */
+    fun copyTile(tx: Int, ty: Int): ByteArray? = cells[tx + ty * tilesX]?.copyOf()
+
     /** A tile is active if it holds air, touches a tile that does, or holds building pheromone. */
     fun isActive(tx: Int, ty: Int): Boolean {
         if (pheromone[tx + ty * tilesX] != null) return true

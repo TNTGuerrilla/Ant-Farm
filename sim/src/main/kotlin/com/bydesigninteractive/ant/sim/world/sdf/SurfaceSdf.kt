@@ -102,7 +102,16 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
 
     /** The pebbles and rocks generated in one chunk (empty for a world without rocks). */
     fun ownBlobs(cx: Int, cy: Int): List<Blob> =
-        own[cx + cy * CHUNKS] ?: (if (rocks) generate(cx, cy) else emptyList()).also { own[cx + cy * CHUNKS] = it }
+        own[cx + cy * CHUNKS] ?: (if (rocks) generate(cx, cy) else emptyList()).also {
+            own[cx + cy * CHUNKS] = it
+            onGenerated?.invoke(cx, cy, it)
+        }
+
+    /** Called on the simulation thread when a chunk's rocks are first generated. */
+    var onGenerated: ((cx: Int, cy: Int, blobs: List<Blob>) -> Unit)? = null
+
+    /** A chunk's rocks if already generated, without generating them. */
+    fun generatedBlobs(cx: Int, cy: Int): List<Blob>? = own[cx + cy * CHUNKS]
 
     private fun blobsNear(x: Float, y: Float): List<Blob> {
         val cx = floor(x / CHUNK_MM).toInt().coerceIn(0, CHUNKS - 1)
