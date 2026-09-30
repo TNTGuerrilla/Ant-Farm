@@ -4,9 +4,11 @@ import com.bydesigninteractive.ant.sim.World
 import com.bydesigninteractive.ant.sim.world.sdf.Blob
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -80,6 +82,47 @@ class SurfaceWalkTest {
             }
         }
         assertTrue(underside > 0, "nobody walked the underside")
+    }
+
+    private fun pose(fx: Float, fy: Float, fz: Float, nx: Float, ny: Float, nz: Float, heading: Float): Ant {
+        val a = Ant(0, Role.FORAGER, 0f, false)
+        a.fx = fx
+        a.fy = fy
+        a.fz = fz
+        a.nx = nx
+        a.ny = ny
+        a.nz = nz
+        a.heading = heading
+        return a
+    }
+
+    @Test
+    fun atAWallTheFoldFallbackHeadsUp() {
+        // Walking east into a wall whose normal faces west.
+        val a = pose(1f, 0f, 0f, -1f, 0f, 0f, 0f)
+        SurfaceWalk.transport(a)
+        assertEquals(1f, a.fz, 1e-4f)
+    }
+
+    @Test
+    fun overAConvexEdgeTheFoldFallbackHeadsDown() {
+        // Walking east off the top of a block whose side faces east.
+        val a = pose(1f, 0f, 0f, 1f, 0f, 0f, 0f)
+        SurfaceWalk.transport(a)
+        assertEquals(-1f, a.fz, 1e-4f)
+    }
+
+    @Test
+    fun faceCompassKeepsTheHeadingExactOnASlope() {
+        val len = sqrt(0.5f * 0.5f + 0.3f * 0.3f + 1f)
+        val a = pose(1f, 0f, 0f, -0.5f / len, 0.3f / len, 1f / len, 0f)
+        for (angle in listOf(0.4f, 1.9f, -2.5f)) {
+            SurfaceWalk.faceCompass(a, angle)
+            assertEquals(angle, atan2(a.fy, a.fx), 1e-5f)
+            assertEquals(angle, a.heading, 1e-5f)
+            assertEquals(0f, a.fx * a.nx + a.fy * a.ny + a.fz * a.nz, 1e-5f)
+            assertEquals(1f, sqrt(a.fx * a.fx + a.fy * a.fy + a.fz * a.fz), 1e-5f)
+        }
     }
 
     @Test

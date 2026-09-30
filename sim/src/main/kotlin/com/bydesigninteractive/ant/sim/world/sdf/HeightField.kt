@@ -52,12 +52,63 @@ class HeightField(private val seed: Long, private val spoil: ChunkedField) {
         out[1] = (height(x, y + 1f) - height(x, y - 1f)) / 2f
     }
 
-    /** Signed distance to the ground, close to exact for gentle slopes. */
+    /**
+     * Signed distance to the ground, close to exact for gentle slopes. It evaluates the height
+     * once and takes the slope analytically from the same bilinear cells (base grid and spoil).
+     */
     fun distance(x: Float, y: Float, z: Float): Float {
-        slope(x, y, slopeScratch)
+        val h = heightAndSlope(x, y, slopeScratch)
         val hx = slopeScratch[0]
         val hy = slopeScratch[1]
-        return (z - height(x, y)) / sqrt(1f + hx * hx + hy * hy)
+        return (z - h) / sqrt(1f + hx * hx + hy * hy)
+    }
+
+    /**
+     * The same value as [height], with dh/dx and dh/dy of the bilinear patches under (x, y) into
+     * out[0] and out[1]. The slope is 0 along an axis where (x, y) lies beyond the map edge.
+     */
+    private fun heightAndSlope(x: Float, y: Float, out: FloatArray): Float {
+        val cx = x.coerceIn(0f, MAX)
+        val cy = y.coerceIn(0f, MAX)
+        val kx = (cx / CHUNK_MM).toInt().coerceAtMost(CHUNKS - 1)
+        val ky = (cy / CHUNK_MM).toInt().coerceAtMost(CHUNKS - 1)
+        val k = kx + ky * CHUNKS
+        val grid = grids[k] ?: build(kx, ky).also { grids[k] = it }
+        val u = (cx - kx * CHUNK_MM) / GRID_MM
+        val v = (cy - ky * CHUNK_MM) / GRID_MM
+        val i = floor(u).toInt().coerceAtMost(CELLS - 1)
+        val j = floor(v).toInt().coerceAtMost(CELLS - 1)
+        val fu = u - i
+        val fv = v - j
+        val row = CELLS + 1
+        val h00 = grid[j * row + i]
+        val h10 = grid[j * row + i + 1]
+        val h01 = grid[(j + 1) * row + i]
+        val h11 = grid[(j + 1) * row + i + 1]
+        val a = h00 + (h10 - h00) * fu
+        val b = h01 + (h11 - h01) * fu
+        val base = a + (b - a) * fv
+        var dx = if (x == cx) ((h10 - h00) + ((h11 - h01) - (h10 - h00)) * fv) / GRID_MM else 0f
+        var dy = if (y == cy) (b - a) / GRID_MM else 0f
+
+        val cell = spoil.cellMm.toFloat()
+        val su = x / cell - 0.5f
+        val sv = y / cell - 0.5f
+        val si = floor(su).toInt()
+        val sj = floor(sv).toInt()
+        val sfu = su - si
+        val sfv = sv - sj
+        val s00 = spoil.cell(si, sj)
+        val s10 = spoil.cell(si + 1, sj)
+        val s01 = spoil.cell(si, sj + 1)
+        val s11 = spoil.cell(si + 1, sj + 1)
+        val sa = s00 + (s10 - s00) * sfu
+        val sb = s01 + (s11 - s01) * sfu
+        dx += ((s10 - s00) + ((s11 - s01) - (s10 - s00)) * sfv) * PELLET_HEIGHT / cell
+        dy += (sb - sa) * PELLET_HEIGHT / cell
+        out[0] = dx
+        out[1] = dy
+        return base + (sa + (sb - sa) * sfv) * PELLET_HEIGHT
     }
 
     private fun spoilHeight(x: Float, y: Float): Float {

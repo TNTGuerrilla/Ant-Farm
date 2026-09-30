@@ -57,6 +57,24 @@ class Field3Test {
     }
 
     @Test
+    fun diffusionCrossesBlockFaces() {
+        val f = Field3(0.05f, 0f, 1f)
+        f.add(95f, 55f, 55f, 1f) // voxel (9, 5, 5), the high-x face of block (0, 0, 0)
+        f.add(105f, 55f, 55f, 0f) // allocates block (1, 0, 0)
+        f.add(55f, 55f, 5f, 1f) // voxel (5, 5, 0), the low-z face of block (0, 0, 0)
+        f.add(55f, 55f, -5f, 0f) // allocates block (0, 0, -1)
+        f.step()
+        assertEquals(0.7f, f.get(95f, 55f, 55f), 1e-5f)
+        assertEquals(0.05f, f.get(105f, 55f, 55f), 1e-5f)
+        assertEquals(0.05f, f.get(85f, 55f, 55f), 1e-5f)
+        assertEquals(0.7f, f.get(55f, 55f, 5f), 1e-5f)
+        assertEquals(0.05f, f.get(55f, 55f, -5f), 1e-5f)
+        f.step()
+        // The spread back from the neighbor block arrives too: 0.7 * 0.7 + 6 * 0.05 * 0.05.
+        assertEquals(0.505f, f.get(95f, 55f, 55f), 1e-5f)
+    }
+
+    @Test
     fun eagerFieldsDecayEveryStep() {
         val f = Field3(1f, 0.01f, 0.1f)
         f.add(55f, 55f, 55f, 1f)

@@ -5,6 +5,7 @@ import com.bydesigninteractive.ant.sim.World
 import com.bydesigninteractive.ant.sim.world.Field3
 import com.bydesigninteractive.ant.sim.world.SURFACE_MM
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -18,6 +19,7 @@ import kotlin.math.sqrt
  */
 internal object SurfaceWalk {
     private const val FOLD = 0.2f
+    private const val STEEP_NZ = 0.2f
 
     /** Puts a surface ant on the surface at (x, y), facing compass angle [heading]. */
     fun place(w: World, a: Ant, x: Float, y: Float, heading: Float) {
@@ -94,7 +96,25 @@ internal object SurfaceWalk {
 
     fun faceToward(a: Ant, x: Float, y: Float, z: Float) = faceDirection(a, x - a.x, y - a.y, z - a.z)
 
-    fun faceCompass(a: Ant, angle: Float) = faceDirection(a, cos(angle), sin(angle), 0f)
+    /**
+     * Faces compass angle [angle]. On a slope the forward vector is the tangent whose horizontal
+     * part points exactly along the compass angle; on a steep face (|nz| of 0.2 or less) it falls
+     * back to projecting the horizontal direction into the tangent plane.
+     */
+    fun faceCompass(a: Ant, angle: Float) {
+        val c = cos(angle)
+        val s = sin(angle)
+        if (abs(a.nz) <= STEEP_NZ) {
+            faceDirection(a, c, s, 0f)
+            return
+        }
+        val fz = -(c * a.nx + s * a.ny) / a.nz
+        val len = sqrt(1f + fz * fz)
+        a.fx = c / len
+        a.fy = s / len
+        a.fz = fz / len
+        updateHeading(a)
+    }
 
     /** A search walk: straight runs of exponential length, then a random turn (section 5). */
     fun wander(w: World, a: Ant, runMean: Float, turnSd: Float) {
@@ -134,7 +154,8 @@ internal object SurfaceWalk {
         p[0] = a.x + (a.fx * c + cx * s) * ahead
         p[1] = a.y + (a.fy * c + cy * s) * ahead
         p[2] = a.z + (a.fz * c + cz * s) * ahead
-        w.surface.sdf.project(p)
+        // An antenna only needs to be near the surface, so one Newton step is enough.
+        w.surface.sdf.project(p, iterations = 1)
         return field.get(p[0], p[1], p[2])
     }
 
@@ -147,7 +168,7 @@ internal object SurfaceWalk {
     }
 
     /** Carries the forward vector into the tangent plane; rebuilds it at a sharp fold. */
-    private fun transport(a: Ant) {
+    internal fun transport(a: Ant) {
         val d = a.fx * a.nx + a.fy * a.ny + a.fz * a.nz
         var fx = a.fx - a.nx * d
         var fy = a.fy - a.ny * d
@@ -163,10 +184,12 @@ internal object SurfaceWalk {
             fz = -a.nz * e
             len = sqrt(fx * fx + fy * fy + fz * fz)
             if (len < FOLD) {
-                // The normal is horizontal along the heading: head up the face.
-                fx = -a.nx * a.nz
-                fy = -a.ny * a.nz
-                fz = 1f - a.nz * a.nz
+                // The normal is horizontal along the heading. Head up a wall the ant walked into
+                // (the old forward pointed against the normal) and down over a convex edge.
+                val up = if (d > 0f) -1f else 1f
+                fx = -a.nx * a.nz * up
+                fy = -a.ny * a.nz * up
+                fz = (1f - a.nz * a.nz) * up
                 len = sqrt(fx * fx + fy * fy + fz * fz)
             }
         }

@@ -21,7 +21,9 @@ class Field3(
 ) {
     private class Block(val bx: Int, val by: Int, val bz: Int, var tick: Long) {
         var v = FloatArray(B3)
-        var scratch = FloatArray(B3)
+
+        /** The diffusion buffer, allocated on the first diffusion step only. */
+        var scratch: FloatArray? = null
     }
 
     private val blocks = LinkedHashMap<Long, Block>()
@@ -134,11 +136,6 @@ class Field3(
         return b.v[index(gx, gy, gz)]
     }
 
-    private fun rawVoxel(gx: Int, gy: Int, gz: Int): Float {
-        val b = blockFor(gx, gy, gz, create = false) ?: return 0f
-        return b.v[index(gx, gy, gz)]
-    }
-
     private fun blockFor(gx: Int, gy: Int, gz: Int, create: Boolean): Block? {
         val bx = Math.floorDiv(gx, B)
         val by = Math.floorDiv(gy, B)
@@ -164,28 +161,40 @@ class Field3(
         b.tick = now
     }
 
+    /**
+     * One explicit diffusion and decay step over every block. Each block looks up its 6 face
+     * neighbors once and reads their boundary voxels straight from their arrays; a missing
+     * neighbor reads as 0.
+     */
     private fun diffuse() {
         val keep = exp(-decayPerSecond * dt)
         val k = diffusion * dt
         for (b in blocks.values) {
             val src = b.v
-            val dst = b.scratch
+            val dst = b.scratch ?: FloatArray(B3).also { b.scratch = it }
+            val xLo = blocks[key(b.bx - 1, b.by, b.bz)]?.v
+            val xHi = blocks[key(b.bx + 1, b.by, b.bz)]?.v
+            val yLo = blocks[key(b.bx, b.by - 1, b.bz)]?.v
+            val yHi = blocks[key(b.bx, b.by + 1, b.bz)]?.v
+            val zLo = blocks[key(b.bx, b.by, b.bz - 1)]?.v
+            val zHi = blocks[key(b.bx, b.by, b.bz + 1)]?.v
             for (lz in 0 until B) for (ly in 0 until B) for (lx in 0 until B) {
                 val i = (lz * B + ly) * B + lx
-                val gx = b.bx * B + lx
-                val gy = b.by * B + ly
-                val gz = b.bz * B + lz
                 val c = src[i]
-                val sum = neighbor(src, lx - 1, ly, lz, gx - 1, gy, gz) + neighbor(src, lx + 1, ly, lz, gx + 1, gy, gz) +
-                    neighbor(src, lx, ly - 1, lz, gx, gy - 1, gz) + neighbor(src, lx, ly + 1, lz, gx, gy + 1, gz) +
-                    neighbor(src, lx, ly, lz - 1, gx, gy, gz - 1) + neighbor(src, lx, ly, lz + 1, gx, gy, gz + 1)
+                val left = if (lx > 0) src[i - 1] else xLo?.get(i + B - 1) ?: 0f
+                val right = if (lx < B - 1) src[i + 1] else xHi?.get(i - (B - 1)) ?: 0f
+                val down = if (ly > 0) src[i - B] else yLo?.get(i + B * (B - 1)) ?: 0f
+                val up = if (ly < B - 1) src[i + B] else yHi?.get(i - B * (B - 1)) ?: 0f
+                val below = if (lz > 0) src[i - B * B] else zLo?.get(i + B * B * (B - 1)) ?: 0f
+                val above = if (lz < B - 1) src[i + B * B] else zHi?.get(i - B * B * (B - 1)) ?: 0f
+                val sum = left + right + down + up + below + above
                 dst[i] = (c + k * (sum - 6f * c)) * keep
             }
         }
         val dead = ArrayList<Long>()
         for ((key, b) in blocks) {
             val old = b.v
-            b.v = b.scratch
+            b.v = b.scratch!!
             b.scratch = old
             b.tick = now + 1
             var m = 0f
@@ -196,9 +205,6 @@ class Field3(
         cacheKey = Long.MIN_VALUE
         cacheBlock = null
     }
-
-    private fun neighbor(src: FloatArray, lx: Int, ly: Int, lz: Int, gx: Int, gy: Int, gz: Int): Float =
-        if (lx in 0 until B && ly in 0 until B && lz in 0 until B) src[(lz * B + ly) * B + lx] else rawVoxel(gx, gy, gz)
 
     private fun sweep() {
         val dead = ArrayList<Long>()
@@ -216,8 +222,12 @@ class Field3(
     private fun index(gx: Int, gy: Int, gz: Int): Int =
         (Math.floorMod(gz, B) * B + Math.floorMod(gy, B)) * B + Math.floorMod(gx, B)
 
+    /**
+     * A unique key per block. The packed coordinates are multiplied by an odd constant (a
+     * bijection), so nearby blocks spread over the hash table instead of colliding in a few bins.
+     */
     private fun key(bx: Int, by: Int, bz: Int): Long =
-        ((bx + OFFSET).toLong() shl 42) or ((by + OFFSET).toLong() shl 21) or (bz + OFFSET).toLong()
+        (((bx + OFFSET).toLong() shl 42) or ((by + OFFSET).toLong() shl 21) or (bz + OFFSET).toLong()) * MIX
 
     private companion object {
         const val B = 10
@@ -225,5 +235,6 @@ class Field3(
         const val SWEEP_TICKS = 200L
         const val FADED = 1e-4f
         const val OFFSET = 1 shl 20
+        const val MIX = -0x61c8864680b583ebL
     }
 }

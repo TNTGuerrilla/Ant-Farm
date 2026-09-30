@@ -25,8 +25,11 @@ class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean
     /** Trail pheromone on the 3D surface (section 5): narrow, decays 0.4% per second. */
     val trail = Field3(DT, params.trailDecay, params.trailDiffusion)
 
-    /** Home-range scent laid by every walking ant; slow, lazily decayed. */
-    val homeScent = Field3(DT, params.homeScentDecay, 0f)
+    /**
+     * Home-range scent laid by every walking ant; slow, lazily decayed. It is a coarse colony
+     * footprint whose gradient toward home is all that matters (section 4), so it uses 25 mm voxels.
+     */
+    val homeScent = Field3(DT, params.homeScentDecay, 0f, cellMm = HOME_SCENT_CELL_MM)
 
     /** Soil pellets dumped by diggers, as a count per field cell. */
     val spoil = ChunkedField()
@@ -106,5 +109,6 @@ class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean
     private companion object {
         const val PLANT_SALT = 99
         const val PREY_SALT = 98
+        const val HOME_SCENT_CELL_MM = 25f
     }
 }

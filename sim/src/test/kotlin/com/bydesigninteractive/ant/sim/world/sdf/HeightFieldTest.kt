@@ -2,6 +2,7 @@ package com.bydesigninteractive.ant.sim.world.sdf
 
 import com.bydesigninteractive.ant.sim.world.ChunkedField
 import kotlin.math.abs
+import kotlin.math.sqrt
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -59,5 +60,20 @@ class HeightFieldTest {
         assertEquals(0f, ground.distance(2500f, 2500f, h), 1e-4f)
         assertTrue(ground.distance(2500f, 2500f, h + 5f) in 4f..5.0001f)
         assertTrue(ground.distance(2500f, 2500f, h - 5f) < 0f)
+    }
+
+    @Test
+    fun distanceFollowsTheSlopeOnReliefAndSpoil() {
+        spoil.add(3205f, 4325f, 100f)
+        val out = FloatArray(2)
+        for (i in 0 until 60) {
+            val x = 3190f + i * 0.73f
+            val y = 4312f + i * 0.41f
+            ground.slope(x, y, out)
+            val h = ground.height(x, y)
+            assertEquals(0f, ground.distance(x, y, h), 1e-4f)
+            val expected = 2f / sqrt(1f + out[0] * out[0] + out[1] * out[1])
+            assertEquals(expected, ground.distance(x, y, h + 2f), 0.05f)
+        }
     }
 }

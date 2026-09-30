@@ -59,11 +59,12 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
     }
 
     /**
-     * Moves the point (p[0], p[1], p[2]) onto the surface with [ITERATIONS] Newton steps. It reuses
-     * a scratch array, so it is for one simulation thread.
+     * Moves the point (p[0], p[1], p[2]) onto the surface with [iterations] Newton steps (two keep
+     * an ant within 0.5 mm; one is enough for a point that only needs to be near the surface). It
+     * reuses a scratch array, so it is for one simulation thread.
      */
-    fun project(p: FloatArray) {
-        repeat(ITERATIONS) {
+    fun project(p: FloatArray, iterations: Int = ITERATIONS) {
+        repeat(iterations) {
             val d = distance(p[0], p[1], p[2])
             gradient(p[0], p[1], p[2], g)
             p[0] -= g[0] * d
