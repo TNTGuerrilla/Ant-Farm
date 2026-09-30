@@ -37,9 +37,18 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
      */
     fun distance(x: Float, y: Float, z: Float): Float {
         var d = map.ground.distance(x, y, z)
-        for (b in blobsNear(x, y)) if (b.near(x, y, z, MARGIN)) d = smin(d, b.distance(x, y, z), BLEND)
-        for (b in placed) if (b.near(x, y, z, MARGIN)) d = smin(d, b.distance(x, y, z), BLEND)
-        for (f in map.foods) {
+        val nearBlobs = blobsNear(x, y)
+        for (i in nearBlobs.indices) {
+            val b = nearBlobs[i]
+            if (b.near(x, y, z, MARGIN)) d = smin(d, b.distance(x, y, z), BLEND)
+        }
+        for (i in placed.indices) {
+            val b = placed[i]
+            if (b.near(x, y, z, MARGIN)) d = smin(d, b.distance(x, y, z), BLEND)
+        }
+        val foods = map.foods
+        for (i in foods.indices) {
+            val f = foods[i]
             val body = f.body
             if (body != null && body.near(x, y, z, MARGIN)) d = smin(d, body.distance(x, y, z), BLEND)
             val stem = f.stem
@@ -82,7 +91,9 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
 
     /** The plant whose stem surface is within [within] of (x, y, z), or null. */
     fun stemAt(x: Float, y: Float, z: Float, within: Float): FoodSource? {
-        for (f in map.foods) {
+        val foods = map.foods
+        for (i in foods.indices) {
+            val f = foods[i]
             val s = f.stem ?: continue
             if (s.distance(x, y, z) <= within) return f
         }

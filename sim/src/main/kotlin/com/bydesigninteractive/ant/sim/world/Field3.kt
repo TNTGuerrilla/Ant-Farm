@@ -1,5 +1,6 @@
 package com.bydesigninteractive.ant.sim.world
 
+import com.bydesigninteractive.ant.sim.util.LongObjectMap
 import kotlin.math.exp
 import kotlin.math.floor
 
@@ -32,7 +33,7 @@ class Field3(
         var scratch: FloatArray? = null
     }
 
-    private val blocks = LinkedHashMap<Long, Block>()
+    private val blocks = LongObjectMap<Block>()
     private var cacheKey = Long.MIN_VALUE
     private var cacheBlock: Block? = null
 
@@ -130,7 +131,8 @@ class Field3(
     /** The strongest voxel, decayed to now. Side-effect free. */
     fun max(): Float {
         var m = 0f
-        for (b in blocks.values) {
+        for (slot in 0 until blocks.capacity()) {
+            val b = blocks.valueAt(slot) ?: continue
             val f = factor(b)
             for (value in b.v) {
                 val decayed = value * f
@@ -150,7 +152,8 @@ class Field3(
         val ix0 = floor(x0 / cellMm).toInt()
         val iy0 = floor(y0 / cellMm).toInt()
         var any = false
-        for (b in blocks.values) {
+        for (slot in 0 until blocks.capacity()) {
+            val b = blocks.valueAt(slot) ?: continue
             val gx0 = b.bx * B
             val gy0 = b.by * B
             if (gx0 + B <= ix0 || gx0 >= ix0 + cells || gy0 + B <= iy0 || gy0 >= iy0 + cells) continue
@@ -177,7 +180,7 @@ class Field3(
     }
 
     private fun peekVoxel(gx: Int, gy: Int, gz: Int): Float {
-        val b = blocks[key(Math.floorDiv(gx, B), Math.floorDiv(gy, B), Math.floorDiv(gz, B))] ?: return 0f
+        val b = blocks.get(key(Math.floorDiv(gx, B), Math.floorDiv(gy, B), Math.floorDiv(gz, B))) ?: return 0f
         return b.v[index(gx, gy, gz)] * factor(b)
     }
 
@@ -187,11 +190,11 @@ class Field3(
         val bz = Math.floorDiv(gz, B)
         val key = key(bx, by, bz)
         if (key == cacheKey) return cacheBlock
-        var b = blocks[key]
+        var b = blocks.get(key)
         if (b == null) {
             if (!create) return null
             b = Block(bx, by, bz, now)
-            blocks[key] = b
+            blocks.put(key, b)
         }
         cacheKey = key
         cacheBlock = b
@@ -217,15 +220,16 @@ class Field3(
     private fun diffuse() {
         val keep = exp(-decayPerSecond * dt)
         val k = diffusion * dt
-        for (b in blocks.values) {
+        for (slot in 0 until blocks.capacity()) {
+            val b = blocks.valueAt(slot) ?: continue
             val src = b.v
             val dst = b.scratch ?: FloatArray(B3).also { b.scratch = it }
-            val xLo = blocks[key(b.bx - 1, b.by, b.bz)]?.v
-            val xHi = blocks[key(b.bx + 1, b.by, b.bz)]?.v
-            val yLo = blocks[key(b.bx, b.by - 1, b.bz)]?.v
-            val yHi = blocks[key(b.bx, b.by + 1, b.bz)]?.v
-            val zLo = blocks[key(b.bx, b.by, b.bz - 1)]?.v
-            val zHi = blocks[key(b.bx, b.by, b.bz + 1)]?.v
+            val xLo = blocks.get(key(b.bx - 1, b.by, b.bz))?.v
+            val xHi = blocks.get(key(b.bx + 1, b.by, b.bz))?.v
+            val yLo = blocks.get(key(b.bx, b.by - 1, b.bz))?.v
+            val yHi = blocks.get(key(b.bx, b.by + 1, b.bz))?.v
+            val zLo = blocks.get(key(b.bx, b.by, b.bz - 1))?.v
+            val zHi = blocks.get(key(b.bx, b.by, b.bz + 1))?.v
             for (lz in 0 until B) for (ly in 0 until B) for (lx in 0 until B) {
                 val i = (lz * B + ly) * B + lx
                 val c = src[i]
@@ -240,7 +244,9 @@ class Field3(
             }
         }
         val dead = ArrayList<Long>()
-        for ((key, b) in blocks) {
+        for (slot in 0 until blocks.capacity()) {
+            val b = blocks.valueAt(slot) ?: continue
+            val key = blocks.keyAt(slot)
             val old = b.v
             b.v = b.scratch!!
             b.scratch = old
@@ -256,7 +262,9 @@ class Field3(
 
     private fun sweep() {
         val dead = ArrayList<Long>()
-        for ((key, b) in blocks) {
+        for (slot in 0 until blocks.capacity()) {
+            val b = blocks.valueAt(slot) ?: continue
+            val key = blocks.keyAt(slot)
             catchUp(b)
             var m = 0f
             for (value in b.v) if (value > m) m = value
@@ -270,18 +278,14 @@ class Field3(
     private fun index(gx: Int, gy: Int, gz: Int): Int =
         (Math.floorMod(gz, B) * B + Math.floorMod(gy, B)) * B + Math.floorMod(gx, B)
 
-    /**
-     * A unique key per block. The packed coordinates are multiplied by an odd constant (a
-     * bijection), so nearby blocks spread over the hash table instead of colliding in a few bins.
-     */
+    /** A unique key per block: the packed block coordinates. [LongObjectMap] mixes keys itself. */
     private fun key(bx: Int, by: Int, bz: Int): Long =
-        (((bx + OFFSET).toLong() shl 42) or ((by + OFFSET).toLong() shl 21) or (bz + OFFSET).toLong()) * MIX
+        ((bx + OFFSET).toLong() shl 42) or ((by + OFFSET).toLong() shl 21) or (bz + OFFSET).toLong()
 
     private companion object {
         const val B = 10
         const val B3 = B * B * B
         const val SWEEP_TICKS = 200L
         const val OFFSET = 1 shl 20
-        const val MIX = -0x61c8864680b583ebL
     }
 }

@@ -101,7 +101,8 @@ class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean
     fun nearestFood(x: Float, y: Float, within: Float): FoodSource? {
         var best: FoodSource? = null
         var bestGap = within
-        for (f in foods) {
+        for (i in foods.indices) {
+            val f = foods[i]
             if (f.hasStem) continue
             val gap = hypot(f.x - x, f.y - y) - f.radius
             if (gap <= bestGap) {
@@ -116,7 +117,8 @@ class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean
     fun nearestPlant(x: Float, y: Float, within: Float): FoodSource? {
         var best: FoodSource? = null
         var bestGap = within
-        for (f in foods) {
+        for (i in foods.indices) {
+            val f = foods[i]
             if (!f.hasStem) continue
             val gap = hypot(f.x - x, f.y - y)
             if (gap <= bestGap) {
