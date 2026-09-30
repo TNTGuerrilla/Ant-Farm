@@ -17,9 +17,19 @@ Gradle needs JDK 17. If `JAVA_HOME` points at an older JDK, point it at a JDK 17
 - Desktop: `.\gradlew.bat :desktop:run`
 - TV APK: `.\gradlew.bat :android:assembleDebug` (output in `android\build\outputs\apk\debug\`)
 
+## The app (milestone M1, desktop)
+
+The desktop app runs a young colony: scripted diggers extend the nest and scripted foragers search, feed and lay trails. There are three views:
+
+- **Nest:** the cross-section. The camera frames the dug part and zooms out as it grows, but never so far that an ant is shorter than 8 px on a 1080p screen.
+- **Surface, top:** the ground from above, with spoil and trail pheromone overlays.
+- **Surface, 2.5D:** a third-person camera behind a forager. Turning in place does not swing the camera; walking off does. A low-poly 3D surface replaces it in M1b.
+
+Keys: Tab cycles views, Space pauses, 1/2/3 set speed 1x/4x/16x, WASD or arrows pan, +/- or the mouse wheel zoom, F follows the next forager, P toggles the trail overlay; in the 2.5D view the arrows pick the ant. `--seed=N` picks the world, and `--stub` runs the M0 stub (`.\gradlew.bat :desktop:run --args="--stub"`).
+
 ## Milestone M0: the TV stub
 
-The current app is a stub that checks the TV before the real work starts:
+The TV dream still runs the M0 stub, which checks a TV before real work:
 
 1. Remote keys reach an interactive dream. The overlay lists keys twice: as the dream's window received them, and as libGDX delivered them.
 2. 1,000 moving ant sprites hold the frame rate. Up doubles the sprite count and Down halves it, so the headroom can be found.

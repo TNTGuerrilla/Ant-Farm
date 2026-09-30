@@ -4,6 +4,8 @@ A passive, realistic simulation of a wild Lasius niger colony in 2D cross-sectio
 
 ## Status
 
+**M1 is done (desktop, 2026-09-30; no TV run by the owner's decision).** `sim` holds the world: seeded soil, the nest slice in lazily created 64 x 64 tiles with an active set, the scripted excavation plan and distance maps, chunked surface fields, and scripted diggers and foragers (`sim/ant`). `GruterScenarioTest` reproduces Gruter 2012: no trails at 30 foragers, symmetry breaking at 150, and switching to a richer source. That needed a Deneubourg-style trail choice at the nest exit, and the calibrated values are documented in `AntParams`. `core` has the camera math, the nest, top-down and 2.5D renderers, and `AntApp`. The desktop runs it at about 180 fps. The TV dream still runs the M0 stub. Next is **M1b: a RuneScape-style low-poly 3D surface** (see the design doc, sections 12 and 13), then M2.
+
 **Milestone M0** (the TV stub) is built: the four Gradle modules exist, and `core/.../stub/StubApp.kt` logs D-pad keys in an interactive dream, draws 1,000 moving sprites and times a 20 MB background atomic write. **M0 passed on the TCL on 2026-09-29.** Every remote key (arrows, OK, Back) reached the interactive dream, and Back ends it. On the Mali-G52, 8,000 sprites held 60 fps; 16,000 dropped to 39 to 50 fps. A 20 MB atomic write takes about 170 ms (mostly the fsync) with no slow frames. TCL firmware blocks the dream until the app gets `appops ... AUTO_START allow`. Next is M1 on desktop.
 
 Build notes: Gradle needs JDK 17 (`JAVA_HOME` defaults to 1.8 on this machine). libGDX 1.14.2 pulls in AndroidX and needs compileSdk 36. The TCL's userspace is 32-bit ARM (`armeabi-v7a`), and the emulator is x86.

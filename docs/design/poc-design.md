@@ -185,6 +185,7 @@ This needs an early test on the TV (milestone M0) to confirm the firmware passes
 |---|---|---|
 | M0 | TV stub dream: logs key presses; draws 1,000 moving sprites; times a 20 MB background write | Remote input works; the render and save budgets hold |
 | M1 | Desktop: world grid, soil, fields, scripted ants (no brains) that dig, forage and lay trails; renderer with auto-fit camera | The world model and rendering are sound; reproduces the Gruter 2012 foraging switch with scripted rules |
+| M1b | Low-poly 3D surface (RuneScape style): a heightfield ground, solid rocks and similar objects that ants climb over, ants walking on 3D surfaces, low-poly models for ants, rocks, grass and plants; the TV test moves here | The 3D surface runs at 60 fps on the QM6K; ants collide with and crawl over terrain |
 | M2 | Brains replace the scripts; plasticity; fast and slow memory | Learning targets from the reference (75% after 1 visit, and so on) |
 | M3 | Colony life cycle, brood, castes, seasons, the two clocks | Founding to 75 workers and the recruitment switch |
 | M4 | Gene pool, alates, restart sequence; headless offline evolution | Later colony generations measurably improve |
@@ -206,3 +207,11 @@ M0 runs first because it is cheap and de-risks the TV. M1 to M7 are desktop-firs
    - **Later, not now:** 3D. The TV may get a 2.5D version (flat sprites with depth and parallax), and the desktop a real 3D version with modelled environment. Decide when that point comes.
 2. **Gene pool tuning: a litmus test.** Build a repeatable headless test that runs several genome samples through the same scenarios and ranks how they do. Use it to tune mutation rates and learning parameters so evolution keeps real uncertainty: tuned too far one way the colonies stay dumb, too far the other way they become smart too fast. Evolution is the point of the project, so this test is a first-class tool (M4).
 3. **Neighbor colonies** touch the on-screen colony in only two ways: they **attack** it, and when it dies a new queen from the region **takes over** the nest. No trade, territory map or visible neighbor nests otherwise.
+
+## 14. Decisions after M1 (2026-09-30)
+
+1. **The surface becomes low-poly 3D (RuneScape style)** in a new milestone, M1b, before the brains. The reasons are that rocks and similar objects need collision and must be crawlable, and flat 2D ant sprites do not look good up close. The nest stays a 2D cross-section. Low-poly models with simple shading are within the TV's budget; M1b ends with the TV test that M1 skipped.
+2. **Keep the M1 chase-camera angle** (about 70 mm behind and 35 mm above the ant). Grass clipping between the camera and the ant is expected and fine.
+3. **Debris for a later milestone:** leaf litter, pine-needle-like twigs and similar objects that ants interact with and crawl over, to make the surface more interesting.
+4. **Trails are narrow.** Trail pheromone is laid in short streaks on the ground and followed by comparing two antennae a few millimeters apart, so the trail field stays about 1 to 3 cm wide (1 cm grid, small diffusion). Diffusion lost at the edge of an unallocated chunk is negligible at that width and is left as is.
+5. **M1 closed without a TV run.** The TV dream keeps the M0 stub until M1b.
