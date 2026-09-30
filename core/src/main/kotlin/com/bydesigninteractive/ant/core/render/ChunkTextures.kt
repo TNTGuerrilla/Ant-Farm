@@ -69,6 +69,8 @@ class ChunkTextures(private val surface: SurfaceMap) : Disposable {
         }
         p.setColor(0.46f, 0.45f, 0.42f, 1f)
         for (s in c.stones) p.fillCircle(col(s.x, x0, mm), row(s.y, y0, mm), (s.radius / mm).toInt())
+        p.setColor(0.40f, 0.39f, 0.37f, 1f)
+        for (s in c.rocks) p.fillCircle(col(s.x, x0, mm), row(s.y, y0, mm), (s.radius / mm).toInt())
         p.setColor(0.22f, 0.35f, 0.12f, 1f)
         for (t in c.tufts) p.fillCircle(col(t.x, x0, mm), row(t.y, y0, mm), 3)
         return Texture(p).also {

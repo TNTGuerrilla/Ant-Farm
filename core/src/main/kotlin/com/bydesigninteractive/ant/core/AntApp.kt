@@ -12,12 +12,12 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.g2d.TextureRegion
 import com.badlogic.gdx.math.Matrix4
-import com.bydesigninteractive.ant.core.camera.ChaseCamera
+import com.bydesigninteractive.ant.core.camera.ChaseCamera3
 import com.bydesigninteractive.ant.core.camera.ViewCamera
 import com.bydesigninteractive.ant.core.render.ChunkTextures
+import com.bydesigninteractive.ant.core.render.DebugSurfaceRenderer
 import com.bydesigninteractive.ant.core.render.NestRenderer
 import com.bydesigninteractive.ant.core.render.Sprites
-import com.bydesigninteractive.ant.core.render.Surface3dRenderer
 import com.bydesigninteractive.ant.core.render.SurfaceTopRenderer
 import com.bydesigninteractive.ant.core.stub.FrameStats
 import com.bydesigninteractive.ant.core.ui.DebugReadout
@@ -32,29 +32,27 @@ const val APP_LOG_TAG = "AntFarm"
 
 /**
  * The M1 app: runs the world at a fixed 20 ticks per second (sped up on request) and shows it
- * in one of three views. On the TV ([tv] true) it starts in the 2.5D view and the remote picks
+ * in one of three views. On the TV ([tv] true) it starts in the 3D view and the remote picks
  * ants and views; on desktop the keyboard adds panning, zoom and speed.
  */
 class AntApp(private val label: String, private val world: World, private val tv: Boolean) : ApplicationAdapter() {
-    private enum class View(val title: String) { NEST("nest"), SURFACE_TOP("surface, top"), SURFACE_3D("surface, 2.5D") }
+    private enum class View(val title: String) { NEST("nest"), SURFACE_TOP("surface, top"), SURFACE_3D("surface, 3D debug") }
 
     private val frames = FrameStats(600)
     private val nestCam = ViewCamera()
     private val topCam = ViewCamera()
-    private val chase = ChaseCamera()
+    private val chase = ChaseCamera3()
     private val ortho = OrthographicCamera()
     private val hud = Matrix4()
     private lateinit var batch: SpriteBatch
     private lateinit var font: BitmapFont
     private lateinit var pixel: Texture
     private lateinit var antTexture: Texture
-    private lateinit var tuftTexture: Texture
-    private lateinit var plantTexture: Texture
     private lateinit var antRegion: TextureRegion
     private lateinit var chunkTextures: ChunkTextures
     private lateinit var nestRenderer: NestRenderer
     private lateinit var topRenderer: SurfaceTopRenderer
-    private lateinit var renderer3d: Surface3dRenderer
+    private lateinit var renderer3d: DebugSurfaceRenderer
     private var view = if (tv) View.SURFACE_3D else View.NEST
     private var speedIndex = 0
     private var paused = false
@@ -64,6 +62,8 @@ class AntApp(private val label: String, private val world: World, private val tv
     private var showTrail = true
     private var accumulator = 0f
     private var logClock = 0f
+    private var hudLines: List<String> = emptyList()
+    private var hudAge = HUD_EVERY_S
 
     override fun create() {
         batch = SpriteBatch()
@@ -72,13 +72,11 @@ class AntApp(private val label: String, private val world: World, private val tv
         }
         pixel = Sprites.pixel()
         antTexture = Sprites.ant()
-        tuftTexture = Sprites.tuft()
-        plantTexture = Sprites.plant()
         antRegion = TextureRegion(antTexture)
         chunkTextures = ChunkTextures(world.surface)
         nestRenderer = NestRenderer(world)
         topRenderer = SurfaceTopRenderer(world, chunkTextures)
-        renderer3d = Surface3dRenderer(world, chunkTextures, antTexture, tuftTexture, plantTexture)
+        renderer3d = DebugSurfaceRenderer(world)
         followed = world.ants.firstOrNull { it.role == Role.FORAGER }
         Gdx.input.inputProcessor = object : InputAdapter() {
             override fun keyDown(keycode: Int): Boolean = onKey(keycode)
@@ -114,7 +112,7 @@ class AntApp(private val label: String, private val world: World, private val tv
             View.SURFACE_TOP -> drawTop(dt)
             View.SURFACE_3D -> draw3d(dt)
         }
-        drawHud()
+        drawHud(dt)
         logClock += raw
         if (logClock >= LOG_EVERY_S) {
             logClock = 0f
@@ -129,13 +127,15 @@ class AntApp(private val label: String, private val world: World, private val tv
     private fun advance(dt: Float) {
         if (paused) return
         accumulator += dt * SPEEDS[speedIndex]
-        var steps = 0
-        while (accumulator >= DT && steps < MAX_STEPS) {
+        val start = System.nanoTime()
+        while (accumulator >= DT) {
             world.step()
             accumulator -= DT
-            steps++
+            if (System.nanoTime() - start > STEP_BUDGET_NS) {
+                accumulator = 0f // behind: slow the simulation down, not the frame rate
+                break
+            }
         }
-        if (steps == MAX_STEPS) accumulator = 0f
     }
 
     private fun drawNest(dt: Float) {
@@ -176,21 +176,30 @@ class AntApp(private val label: String, private val world: World, private val tv
 
     private fun draw3d(dt: Float) {
         val a = followed
+        val s = world.surface
         when {
-            a != null && a.space == Space.SURFACE -> chase.update(a.x, a.y, a.heading, dt)
-            !chase.placed -> chase.update(world.surface.entranceX, world.surface.entranceY, 0f, dt)
+            a != null && a.space == Space.SURFACE -> chase.update(a.x, a.y, a.z, a.fx, a.fy, a.fz, a.nx, a.ny, a.nz, dt)
+            !chase.placed -> chase.update(
+                s.entranceX, s.entranceY, s.ground.height(s.entranceX, s.entranceY),
+                1f, 0f, 0f, 0f, 0f, 1f, dt,
+            )
         }
         renderer3d.draw(chase)
     }
 
-    private fun drawHud() {
+    private fun drawHud(dt: Float) {
         val help = if (tv) {
             "Left/Right: pick ant   OK: next view   Back: exit"
         } else {
             "Tab view   Space pause   1/2/3 speed   WASD/arrows pan   +/- or wheel zoom   F follow   P trail   (3D: arrows pick ant)"
         }
-        val speed = if (paused) "paused" else "${SPEEDS[speedIndex].toInt()}x"
-        val lines = DebugReadout.lines(world, view.title, speed, Gdx.graphics.framesPerSecond, frames, followed, help)
+        hudAge += dt
+        if (hudAge >= HUD_EVERY_S) {
+            hudAge = 0f
+            val speed = if (paused) "paused" else "${SPEEDS[speedIndex].toInt()}x"
+            hudLines = DebugReadout.lines(world, view.title, speed, Gdx.graphics.framesPerSecond, frames, followed, help)
+        }
+        val lines = hudLines
         val lineH = font.lineHeight
         val top = Gdx.graphics.height - 12f
         batch.projectionMatrix = hud
@@ -258,7 +267,7 @@ class AntApp(private val label: String, private val world: World, private val tv
         }
     }
 
-    /** Follows the next (or previous) forager; in the 2.5D view, prefers ants outside. */
+    /** Follows the next (or previous) forager; in the 3D view, prefers ants outside. */
     private fun followNext(dir: Int) {
         val foragers = world.ants.filter { it.role == Role.FORAGER }
         if (foragers.isEmpty()) return
@@ -272,8 +281,6 @@ class AntApp(private val label: String, private val world: World, private val tv
         topRenderer.dispose()
         nestRenderer.dispose()
         chunkTextures.dispose()
-        plantTexture.dispose()
-        tuftTexture.dispose()
         antTexture.dispose()
         pixel.dispose()
         font.dispose()
@@ -282,7 +289,8 @@ class AntApp(private val label: String, private val world: World, private val tv
 
     private companion object {
         val SPEEDS = floatArrayOf(1f, 4f, 16f)
-        const val MAX_STEPS = 400
+        const val STEP_BUDGET_NS = 6_000_000L
+        const val HUD_EVERY_S = 0.25f
         const val PAN_PX_PER_S = 700f
         const val LOG_EVERY_S = 10f
     }

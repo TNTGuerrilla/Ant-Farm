@@ -4,7 +4,10 @@ import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.Pixmap
 import com.badlogic.gdx.graphics.Texture
 
-/** Procedural placeholder art. The ant faces +x; tufts and plants stand on their bottom edge. */
+/**
+ * Procedural placeholder art. The ant faces +x. Each call returns a new texture the caller owns
+ * and must dispose.
+ */
 object Sprites {
     fun ant(): Texture = texture(antPixmap())
 
@@ -12,35 +15,6 @@ object Sprites {
         setColor(Color.WHITE)
         fill()
     })
-
-    /** A clump of grass blades, 32 x 64, transparent around them. */
-    fun tuft(): Texture {
-        val p = Pixmap(32, 64, Pixmap.Format.RGBA8888)
-        val blades = intArrayOf(-12, -8, -5, -2, 1, 4, 7, 11)
-        for ((i, dx) in blades.withIndex()) {
-            val shade = 0.30f + (i % 3) * 0.06f
-            p.setColor(0.18f, shade + 0.15f, 0.08f, 1f)
-            val top = 4 + (i * 7) % 18
-            p.drawLine(16, 63, 16 + dx, top)
-            p.drawLine(17, 63, 17 + dx, top)
-        }
-        return texture(p)
-    }
-
-    /** An aphid plant: a stem with leaves and a cluster of aphids near the top, 32 x 256. */
-    fun plant(): Texture {
-        val p = Pixmap(32, 256, Pixmap.Format.RGBA8888)
-        p.setColor(0.32f, 0.42f, 0.16f, 1f)
-        p.fillRectangle(15, 20, 3, 236)
-        p.setColor(0.25f, 0.50f, 0.18f, 1f)
-        for (y in 60 until 240 step 36) {
-            fillEllipse(p, 8f, y.toFloat(), 7f, 3f)
-            fillEllipse(p, 24f, y + 18f, 7f, 3f)
-        }
-        p.setColor(0.12f, 0.18f, 0.10f, 1f)
-        for (i in 0 until 14) p.fillCircle(13 + (i * 5) % 8, 24 + i * 5, 2)
-        return texture(p)
-    }
 
     private fun texture(p: Pixmap): Texture = Texture(p).also {
         p.dispose()
