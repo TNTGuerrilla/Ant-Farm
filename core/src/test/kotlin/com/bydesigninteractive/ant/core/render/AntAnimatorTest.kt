@@ -60,4 +60,17 @@ class AntAnimatorTest {
         assertEquals(0, animator.frame(ant(id = 900, speed = 3f))) // never advanced: phase 0
         assertEquals(1, animator.frame(a))
     }
+
+    @Test
+    fun phaseStaysWrappedForLargeTimeAdvances() {
+        val animator = AntAnimator()
+        val a = ant(speed = 20f) // 20 mm/s
+        animator.advance(listOf(a), 1e6f) // advance by 1 million seconds
+        val phase = animator.phase(a)
+        assert(phase >= 0f && phase < 1f) { "phase $phase must be in [0, 1)" }
+        val frameBeforeQuarter = animator.frame(a)
+        animator.advance(listOf(a), 0.0375f) // quarter stride: 0.75 mm at 20 mm/s
+        val frameAfterQuarter = animator.frame(a)
+        assert(frameBeforeQuarter != frameAfterQuarter) { "quarter stride should change frame" }
+    }
 }

@@ -15,6 +15,7 @@ class AntAnimator {
         for (a in ants) {
             if (a.id >= phases.size) phases = phases.copyOf(maxOf(a.id + 1, phases.size * 2))
             phases[a.id] += a.speed * simSeconds / STRIDE_MM
+            phases[a.id] -= floor(phases[a.id])
         }
     }
 
