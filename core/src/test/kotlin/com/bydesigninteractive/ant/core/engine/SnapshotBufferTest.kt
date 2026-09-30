@@ -25,8 +25,14 @@ class SnapshotBufferTest {
         var torn = 0
         var seen = 0
         val reader = thread {
-            while (!done.get()) {
-                val s = b.takeFresh() ?: continue
+            // Checking done before taking guarantees the final publish is read after done is set.
+            while (true) {
+                val finished = done.get()
+                val s = b.takeFresh()
+                if (s == null) {
+                    if (finished) break
+                    continue
+                }
                 seen++
                 for (i in 0 until s.count) if (s.x[i] != s.tick.toFloat()) torn++
             }
