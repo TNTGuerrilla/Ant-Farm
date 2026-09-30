@@ -1,6 +1,7 @@
 package com.bydesigninteractive.ant.sim
 
 import com.bydesigninteractive.ant.sim.ant.Ant
+import com.bydesigninteractive.ant.sim.ant.Digger
 import com.bydesigninteractive.ant.sim.ant.AntParams
 import com.bydesigninteractive.ant.sim.ant.AntState
 import com.bydesigninteractive.ant.sim.ant.Role
@@ -116,10 +117,10 @@ class World(
         tick++
     }
 
-    // Tasks 7 and 8 replace each branch with the role's state machine.
+    // Task 8 replaces the forager branch with its state machine.
     private fun behave(a: Ant) = when (a.role) {
         Role.FORAGER -> Unit
-        Role.DIGGER -> Unit
+        Role.DIGGER -> Digger.update(this, a)
     }
 
     private fun placeAtEntrance(a: Ant) {
