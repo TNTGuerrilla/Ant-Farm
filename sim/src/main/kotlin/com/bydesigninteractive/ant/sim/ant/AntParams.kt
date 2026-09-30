@@ -54,6 +54,11 @@ data class AntParams(
     val unloadSeconds: Float = 60f,
     val unloadDepth: Int = 15,
     val foodSenseRadius: Float = 25f,
+    // Plants: honeydew odour draws searching foragers to the stem, and an empty forager touching
+    // a stem climbs to the aphids 0.5 to 1.2 m up (section 13). Scripted stand-ins for M2 brains.
+    val plantOdourRadius: Float = 150f,
+    val stemTouch: Float = 3f,
+    val stemLeaveHeight: Float = 10f,
     val homeSightRadius: Float = 60f,
     val entranceRadius: Float = 5f,
     // Fields (section 5): weak trails decay 0.4% per second

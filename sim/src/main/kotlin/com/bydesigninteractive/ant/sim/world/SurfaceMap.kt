@@ -101,6 +101,21 @@ class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean
         return best
     }
 
+    /** The closest aphid plant whose stem is within [within] of (x, y) horizontally, or null. */
+    fun nearestPlant(x: Float, y: Float, within: Float): FoodSource? {
+        var best: FoodSource? = null
+        var bestGap = within
+        for (f in foods) {
+            if (!f.hasStem) continue
+            val gap = hypot(f.x - x, f.y - y)
+            if (gap <= bestGap) {
+                bestGap = gap
+                best = f
+            }
+        }
+        return best
+    }
+
     fun step() {
         trail.step()
         homeScent.step()

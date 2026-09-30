@@ -21,6 +21,7 @@ import kotlin.math.sqrt
 internal object Forager {
     private const val HOME_VECTOR_DONE = 15f
     private const val OUTWARD_FROM = 30f
+    private const val STEM_WALL_NZ = 0.5f // steeper than this is still the stem wall
     private const val CROWD_CUT = 4.6f // up to 5.6x less deposition when crowded
 
     fun update(w: World, a: Ant) {
@@ -66,6 +67,7 @@ internal object Forager {
             a.state = AntState.RETURN
             return
         }
+        if (climbOrApproachPlant(w, a)) return
         val food = s.nearestFood(a.x, a.y, p.foodSenseRadius)
         if (food != null) {
             val dx = food.x - a.x
@@ -103,6 +105,41 @@ internal object Forager {
             }
         }
         SurfaceWalk.step(w, a, p.surfaceSpeed)
+    }
+
+    /**
+     * Plants: an empty forager touching a stem climbs it and feeds at the aphid cluster; one in
+     * range of a plant's honeydew odour heads for the stem. True if it acted this tick.
+     */
+    private fun climbOrApproachPlant(w: World, a: Ant): Boolean {
+        val p = w.params
+        val s = w.surface
+        if (a.crop > 0f) return false
+        val onStem = s.sdf.stemAt(a.x, a.y, a.z, p.stemTouch)
+        if (onStem != null) {
+            val dx = onStem.x - a.x
+            val dy = onStem.y - a.y
+            val dz = onStem.z - a.z
+            if (dx * dx + dy * dy + dz * dz <= onStem.radius * onStem.radius) {
+                startFeeding(w, a, onStem)
+                return true
+            }
+            a.onTrail = false
+            // Up alone is ill defined on the sloping ground at the stem base (it can point away
+            // from the stem), so press toward the axis as well; on the stem wall that part is
+            // removed by the tangent projection and only the climb remains.
+            val ax = onStem.x - a.x
+            val ay = onStem.y - a.y
+            val ah = sqrt(ax * ax + ay * ay)
+            if (ah > 1e-3f) SurfaceWalk.faceDirection(a, ax / ah, ay / ah, 1f)
+            else SurfaceWalk.faceDirection(a, 0f, 0f, 1f)
+            SurfaceWalk.step(w, a, p.surfaceSpeed)
+            return true
+        }
+        val plant = s.nearestPlant(a.x, a.y, p.plantOdourRadius) ?: return false
+        SurfaceWalk.faceDirection(a, plant.x - a.x, plant.y - a.y, 0f)
+        SurfaceWalk.step(w, a, p.surfaceSpeed)
+        return true
     }
 
     private fun startFeeding(w: World, a: Ant, food: FoodSource) {
@@ -189,6 +226,16 @@ internal object Forager {
             w.enterNest(a)
             a.arrived = false
             a.state = AntState.UNLOAD
+            return
+        }
+        if (s.sdf.stemAt(a.x, a.y, a.z, p.stemTouch) != null &&
+            (a.z > s.ground.height(a.x, a.y) + p.stemLeaveHeight || a.nz < STEM_WALL_NZ)
+        ) {
+            // Still on the plant (above the leave height, or on its steep base where a horizontal
+            // homing heading points into the wall): come down the stem before homing.
+            SurfaceWalk.faceDirection(a, 0f, 0f, -1f)
+            layTrail(w, a)
+            SurfaceWalk.step(w, a, p.surfaceSpeed)
             return
         }
         when {
