@@ -2,7 +2,6 @@ package com.bydesigninteractive.ant.sim.world
 
 import com.bydesigninteractive.ant.sim.util.unit
 import kotlin.math.abs
-import kotlin.math.sin
 
 /**
  * The untouched soil of the nest slice, computed from the seed on demand so it never needs
@@ -27,7 +26,7 @@ class NestGenerator(private val seed: Long, val width: Int, val depth: Int) {
     }
 
     private fun clay(x: Int, y: Int): Boolean {
-        val top = clayTop + (sin(x / 90.0 + clayPhase) * 15).toInt()
+        val top = clayTop + (StrictMath.sin(x / 90.0 + clayPhase) * 15).toInt()
         return y >= top && y < top + CLAY_THICKNESS
     }
 

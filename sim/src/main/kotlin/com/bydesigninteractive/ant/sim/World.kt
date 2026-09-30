@@ -16,6 +16,7 @@ import com.bydesigninteractive.ant.sim.world.NestPaths
 import com.bydesigninteractive.ant.sim.world.NestPlan
 import com.bydesigninteractive.ant.sim.world.SurfaceMap
 import java.util.Random
+import kotlin.collections.ArrayDeque
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.ln
@@ -23,6 +24,9 @@ import kotlin.math.sin
 
 /** Seconds per tick: the behavior clock runs at 20 ticks per second. */
 const val DT = 0.05f
+
+/** Feed events older than this many ticks (30 simulated minutes) are dropped. */
+const val FEED_WINDOW_TICKS = 36_000L
 
 data class FeedEvent(val tick: Long, val foodId: Int)
 
@@ -45,7 +49,8 @@ class World(
     val surface = SurfaceMap(seed)
     val ants = ArrayList<Ant>()
     val surfaceIndex = SpatialIndex()
-    val feedEvents = ArrayList<FeedEvent>()
+    /** Recent feeding events, oldest first, for the last [FEED_WINDOW_TICKS] ticks. */
+    val feedEvents = ArrayDeque<FeedEvent>()
 
     /** Foragers that have brought food home and unloaded it. */
     var unloads = 0
@@ -116,6 +121,7 @@ class World(
         surfaceIndex.rebuild(ants)
         for (a in ants) behave(a)
         tick++
+        while (feedEvents.isNotEmpty() && feedEvents.first().tick < tick - FEED_WINDOW_TICKS) feedEvents.removeFirst()
     }
 
     private fun behave(a: Ant) = when (a.role) {

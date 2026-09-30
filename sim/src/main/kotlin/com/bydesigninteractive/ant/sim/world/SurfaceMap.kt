@@ -3,9 +3,7 @@ package com.bydesigninteractive.ant.sim.world
 import com.bydesigninteractive.ant.sim.util.hash
 import java.util.Random
 import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.hypot
-import kotlin.math.sin
 
 /** The surface map is 8 x 8 m with the nest entrance in the middle (reference section 13). */
 const val SURFACE_MM = 8000
@@ -29,7 +27,10 @@ class SurfaceMap(val seed: Long) {
     val entranceY = SURFACE_MM / 2f
     private val chunks = HashMap<Int, ChunkContent>()
 
-    fun chunk(cx: Int, cy: Int): ChunkContent = chunks.getOrPut(cx + cy * CHUNKS) { generator.chunk(cx, cy) }
+    fun chunk(cx: Int, cy: Int): ChunkContent {
+        require(cx in 0 until CHUNKS && cy in 0 until CHUNKS) { "chunk ($cx, $cy) is outside the map" }
+        return chunks.getOrPut(cx + cy * CHUNKS) { generator.chunk(cx, cy) }
+    }
 
     /** 2 to 4 aphid plants 0.3 to 3 m out, closer ones more likely (reference section 13). */
     fun placePlants() {
@@ -40,7 +41,7 @@ class SurfaceMap(val seed: Long) {
             val a = r.nextFloat() * 2f * PI.toFloat()
             foods += FoodSource(
                 foods.size, FoodKind.HONEYDEW,
-                entranceX + d * cos(a), entranceY + d * sin(a),
+                entranceX + d * StrictMath.cos(a.toDouble()).toFloat(), entranceY + d * StrictMath.sin(a.toDouble()).toFloat(),
                 radius = 15f, quality = 0.5f + r.nextFloat() * 0.5f,
             )
         }
@@ -54,7 +55,7 @@ class SurfaceMap(val seed: Long) {
             val a = r.nextFloat() * 2f * PI.toFloat()
             foods += FoodSource(
                 foods.size, FoodKind.PREY,
-                entranceX + d * cos(a), entranceY + d * sin(a),
+                entranceX + d * StrictMath.cos(a.toDouble()).toFloat(), entranceY + d * StrictMath.sin(a.toDouble()).toFloat(),
                 radius = 4f, quality = 0.8f, loads = 20,
             )
         }

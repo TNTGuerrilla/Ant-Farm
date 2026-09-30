@@ -7,6 +7,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class SurfaceMapTest {
     @Test
@@ -54,5 +55,12 @@ class SurfaceMapTest {
         m.foods += FoodSource(0, FoodKind.HONEYDEW, m.entranceX + 100f, m.entranceY, 15f, 1f)
         assertNotNull(m.nearestFood(m.entranceX + 100f + 15f + 20f, m.entranceY, 25f))
         assertNull(m.nearestFood(m.entranceX + 100f + 15f + 30f, m.entranceY, 25f))
+    }
+
+    @Test
+    fun chunksOutsideTheMapAreRejected() {
+        val m = SurfaceMap(5)
+        assertFailsWith<IllegalArgumentException> { m.chunk(16, 0) }
+        assertFailsWith<IllegalArgumentException> { m.chunk(0, -1) }
     }
 }

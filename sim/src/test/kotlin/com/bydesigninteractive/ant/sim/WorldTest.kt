@@ -67,4 +67,15 @@ class WorldTest {
         index.rebuild(ants)
         assertEquals(1, index.countNear(ants[0], 10f))
     }
+
+    @Test
+    fun feedEventsKeepOnlyTheLastHalfHour() {
+        val w = World(1)
+        w.predig(1)
+        w.feedEvents += FeedEvent(0, 0)
+        repeat(FEED_WINDOW_TICKS.toInt()) { w.step() }
+        assertEquals(1, w.feedEvents.size)
+        w.step()
+        assertEquals(0, w.feedEvents.size)
+    }
 }
