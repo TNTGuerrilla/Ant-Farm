@@ -83,6 +83,70 @@ class Field3Test {
     }
 
     @Test
+    fun peekReadsTheSameValueAsGet() {
+        val f = Field3(1f, 0.01f, 0f)
+        f.add(52f, 57f, 55f, 1f)
+        repeat(50) { f.step() }
+        val peeked = f.peek(58f, 51f, 53f)
+        assertTrue(peeked > 0f)
+        assertEquals(f.get(58f, 51f, 53f), peeked)
+    }
+
+    @Test
+    fun readsWithoutSideEffectsLeaveTheFieldUnchanged() {
+        fun script(f: Field3, render: Boolean): List<Float> {
+            val out = FloatArray(50 * 50)
+            val seen = ArrayList<Float>()
+            f.add(52f, 57f, 55f, 1f)
+            f.add(147f, 33f, -4f, 0.7f)
+            repeat(300) { t ->
+                f.step()
+                if (render) {
+                    f.peek(52f, 57f, 55f)
+                    f.max()
+                    f.projectMax(0f, 0f, 50, out)
+                }
+                if (t % 97 == 0) {
+                    seen += f.get(52f, 57f, 55f)
+                    f.add(149f, 31f, -2f, 0.3f)
+                }
+            }
+            seen += f.get(52f, 57f, 55f)
+            seen += f.get(147f, 33f, -4f)
+            return seen
+        }
+        val plain = script(Field3(0.05f, 0.37f, 0f), render = false)
+        val rendered = script(Field3(0.05f, 0.37f, 0f), render = true)
+        assertEquals(plain, rendered)
+    }
+
+    @Test
+    fun maxAndProjectMaxSeeLazyDecay() {
+        val f = Field3(1f, 0.01f, 0f)
+        f.add(55f, 55f, 55f, 1f)
+        repeat(50) { f.step() }
+        assertEquals(exp(-0.5f), f.max(), 1e-5f)
+        val out = FloatArray(50 * 50)
+        assertTrue(f.projectMax(0f, 0f, 50, out))
+        assertEquals(exp(-0.5f), out[5 * 50 + 5], 1e-5f)
+    }
+
+    @Test
+    fun blocksAreReleasedBelowTheGivenStrength() {
+        // Decay 0.01 per second: after 600 s a unit mark is e^-6, about 0.0025.
+        val coarse = Field3(1f, 0.01f, 0f, releaseBelow = 1e-2f)
+        val fine = Field3(1f, 0.01f, 0f)
+        coarse.add(55f, 55f, 55f, 1f)
+        fine.add(55f, 55f, 55f, 1f)
+        repeat(600) {
+            coarse.step()
+            fine.step()
+        }
+        assertEquals(0, coarse.blockCount())
+        assertEquals(1, fine.blockCount())
+    }
+
+    @Test
     fun projectMaxLooksStraightDown() {
         val f = Field3(0.05f, 0f, 0f)
         f.add(105f, 205f, -5f, 2f)

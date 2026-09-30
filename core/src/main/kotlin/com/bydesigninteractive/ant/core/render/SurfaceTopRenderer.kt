@@ -68,6 +68,7 @@ class SurfaceTopRenderer(private val world: World, private val chunks: ChunkText
     private fun overlay(cx: Int, cy: Int, showTrail: Boolean, rebuild: Boolean): Texture? {
         val key = cx + cy * CHUNKS
         if (!rebuild) return overlays[key]
+        // projectMax is side-effect free, so drawing never changes the simulation.
         val hasTrail = showTrail &&
             world.surface.trail.projectMax(cx * CHUNK_MM.toFloat(), cy * CHUNK_MM.toFloat(), OVERLAY_CELLS, trailCells)
         val spoil = world.surface.spoil.chunk(cx, cy)

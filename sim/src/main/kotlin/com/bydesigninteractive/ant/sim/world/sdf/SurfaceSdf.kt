@@ -16,6 +16,13 @@ import kotlin.math.sqrt
  * inside matter: the ground, pebbles and rocks generated per chunk, objects [placed] at run
  * time, and food shapes (aphid plant stems and clusters, prey lumps, feeders). Shapes are joined
  * with a smooth minimum, so the crease where a rock meets the ground is rounded.
+ *
+ * Rocks are generated per chunk on first query and skip the entrance and every food in
+ * [SurfaceMap.foods] and [SurfaceMap.pastFoods] (used-up food is kept there). So for any world
+ * whose food is placed before it starts, as in every current scenario, the rocks are the same
+ * whenever a chunk is first queried, by an ant or by a renderer. The remaining limit: food added
+ * at run time does not clear rocks from a chunk that was already generated, and a chunk generated
+ * before that food was added keeps them. Settle this before run-time prey spawning or snapshots.
  */
 class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true) {
     /** Objects placed at run time (tests now; debris in a later milestone). */
@@ -117,7 +124,7 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
         return out
     }
 
-    /** Shapes a partly buried lumpy blob from a 2D stone; all draws happen before any skip. Skips blobs near the entrance or any food. */
+    /** Shapes a partly buried lumpy blob from a 2D stone; all draws happen before any skip. Skips blobs near the entrance or any food, present or used up. */
     private fun addBlob(out: ArrayList<Blob>, r: Random, s: Stone, lump: Float) {
         val rx = s.radius * (0.8f + 0.4f * r.nextFloat())
         val ry = s.radius * (0.8f + 0.4f * r.nextFloat())
@@ -127,6 +134,7 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
         val blob = Blob(s.x, s.y, cz, rx, ry, rz, lump, phase)
         if (hypot(s.x - map.entranceX, s.y - map.entranceY) - blob.reach < ENTRANCE_CLEARANCE) return
         for (f in map.foods) if (hypot(f.x - s.x, f.y - s.y) - blob.reach < FOOD_CLEARANCE) return
+        for (f in map.pastFoods) if (hypot(f.x - s.x, f.y - s.y) - blob.reach < FOOD_CLEARANCE) return
         out += blob
     }
 

@@ -6,17 +6,19 @@ package com.bydesigninteractive.ant.sim.ant
  * Calibrated against the Gruter 2012 scenario test (GruterScenarioTest). No stable trail forms
  * with 30 foragers; a trail with symmetry breaking forms with 150 foragers on one of two equal
  * sources, and a crowded colony switches to a richer source offered later:
- * - trailThreshold 1.2544 (M1 1.96, from 4): lowered 20% twice in M1b-1 in an eight-attempt
- *   search that interleaved markAmount and trailThreshold together. With 30 foragers no trail
- *   persists.
- * - markAmount 17.0859375 (M1 2.25, from 1): raised 50% four times in M1b-1 in the same
- *   eight-attempt joint search. Close to saturationLevel 20, this is a calibration artifact,
- *   not a literature value, and should be revisited when brains replace the scripts (M2). On
- *   the 3D surface, low trail following is mainly structural: lost searchers wander far until
- *   the 900 s search give-up, while the 8-voxel mark spread contributes less. Margins are
- *   thin: with 30 foragers, following averages 0.1435 against a 0.15 limit; with 150
- *   foragers, 0.324 against 0.3.
- * - trailDiffusion 0.025 (from 0.05): halved to keep trails narrow and concentrated.
+ * - trailDiffusion 0 (M1 0.025, from 0.05): no diffusion on the 3D surface. The trail is a
+ *   narrow line on the ground; diffusing it in 3D spread each mark sideways and also up into
+ *   the air and down into the soil, where the surface never reads it, so a 5-minute-old mark
+ *   read about 10x weaker than in M1's 2D field. That forced M1b-1's first calibration to
+ *   markAmount 17.09 and trailThreshold 1.25 as compensation. Without diffusion the trail field
+ *   is lazy (decay on touch, periodic sweep) and its blocks are released below 1e-2.
+ * - trailThreshold 1.96 (from 4) and markAmount 2.25 (from 1): M1's values, restored in M1b-1
+ *   Task 12 with no further change. All three checks pass (seeds 1 to 4):
+ *   - 30 foragers: following 0.009, 0.055, 0.009, 0.001, mean 0.018 against a 0.15 limit.
+ *   - 150 foragers: following 0.402, 0.475, 0.412, 0.450, mean 0.435 against a 0.3 limit;
+ *     busier-source share 0.83, 0.88, 0.81, 0.86, all 4 seeds at 0.7 or more (3 needed).
+ *   - Crowded switch: loser share after the switch 0.89, 0.15, 0.63, 0.68, 3 seeds at 0.5 or
+ *     more (3 needed). This check has no spare seed; it is the thinnest margin.
  * - maxFollow 0.7 (from 0.66): a slightly higher ceiling on joining a trail.
  * - exitChoiceExponent 3 (from 2): a steeper choice among trails at the exit, so the colony
  *   breaks symmetry between equal sources.
@@ -37,7 +39,7 @@ data class AntParams(
     // Trail sensing and following (sections 3 and 4)
     val senseAhead: Float = 10f,
     val senseAngle: Float = 0.5f,
-    val trailThreshold: Float = 1.2544f,
+    val trailThreshold: Float = 1.96f,
     val maxFollow: Float = 0.7f,
     val trailTurnGain: Float = 3f,
     val trailLossFraction: Float = 0.3f,
@@ -50,7 +52,7 @@ data class AntParams(
     val exitChoiceK: Float = 1f,
     // Trail laying (section 5)
     val markChancePerMm: Float = 0.045f,
-    val markAmount: Float = 17.0859375f,
+    val markAmount: Float = 2.25f,
     val saturationLevel: Float = 20f,
     val crowdRadius: Float = 10f,
     val crowdLevel: Int = 4,
@@ -71,7 +73,7 @@ data class AntParams(
     val entranceRadius: Float = 5f,
     // Fields (section 5): weak trails decay 0.4% per second
     val trailDecay: Float = 0.004f,
-    val trailDiffusion: Float = 0.025f,
+    val trailDiffusion: Float = 0f,
     val homeScentDecay: Float = 0.0002f,
     val homeScentPerSecond: Float = 0.01f,
     // Digging (sections 7 and 10): one 1 mm3 cell at about 2 mm3 per ant per hour

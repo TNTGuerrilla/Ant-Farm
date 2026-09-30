@@ -6,7 +6,10 @@ import com.bydesigninteractive.ant.sim.ant.Ant
 import com.bydesigninteractive.ant.sim.ant.Role
 import com.bydesigninteractive.ant.sim.ant.Space
 
-/** The debug overlay text: what the world is doing and how fast it runs. */
+/**
+ * The debug overlay text: what the world is doing and how fast it runs. It reads the world only
+ * through side-effect-free calls (`Field3.max` and `blockCount`), so it never changes a run.
+ */
 object DebugReadout {
     fun lines(w: World, view: String, speed: String, fps: Int, frames: FrameStats, followed: Ant?, help: String): List<String> {
         fun count(role: Role, space: Space) = w.ants.count { it.role == role && it.space == space }

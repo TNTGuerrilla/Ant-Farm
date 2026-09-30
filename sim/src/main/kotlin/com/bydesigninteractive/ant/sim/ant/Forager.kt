@@ -207,7 +207,7 @@ internal object Forager {
             w.feedEvents += FeedEvent(w.tick, food.id)
             if (food.loads != Int.MAX_VALUE) {
                 food.loads--
-                if (food.loads <= 0) w.surface.foods.remove(food)
+                if (food.loads <= 0) w.surface.removeFood(food)
             }
         }
         a.food = null

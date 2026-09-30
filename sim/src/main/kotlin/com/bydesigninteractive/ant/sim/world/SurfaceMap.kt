@@ -22,8 +22,11 @@ const val FIELD_CELL_MM = 10
 class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean = true) {
     val generator = SurfaceGenerator(seed)
 
-    /** Trail pheromone on the 3D surface (section 5): narrow, decays 0.4% per second. */
-    val trail = Field3(DT, params.trailDecay, params.trailDiffusion)
+    /**
+     * Trail pheromone on the 3D surface (section 5): narrow, decays 0.4% per second. A block is
+     * released below 1e-2, where the chance of joining the trail is about 1e-4 (section 5).
+     */
+    val trail = Field3(DT, params.trailDecay, params.trailDiffusion, releaseBelow = TRAIL_RELEASE)
 
     /**
      * Home-range scent laid by every walking ant; slow, lazily decayed. It is a coarse colony
@@ -37,6 +40,9 @@ class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean
     /** The ground height field (reference section 13). */
     val ground = HeightField(seed, spoil)
     val foods = ArrayList<FoodSource>()
+
+    /** Foods used up and removed; grow-only, so rocks never generate where food once was. */
+    val pastFoods = ArrayList<FoodSource>()
     val entranceX = SURFACE_MM / 2f
     val entranceY = SURFACE_MM / 2f
     private val chunks = HashMap<Int, ChunkContent>()
@@ -86,6 +92,11 @@ class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean
         }
     }
 
+    /** Removes a used-up [food], keeping it in [pastFoods] for rock placement. */
+    fun removeFood(food: FoodSource) {
+        if (foods.remove(food)) pastFoods += food
+    }
+
     /** The closest food on the ground (not a plant) whose edge is within [within] of (x, y), or null. */
     fun nearestFood(x: Float, y: Float, within: Float): FoodSource? {
         var best: FoodSource? = null
@@ -125,5 +136,6 @@ class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean
         const val PLANT_SALT = 99
         const val PREY_SALT = 98
         const val HOME_SCENT_CELL_MM = 25f
+        const val TRAIL_RELEASE = 1e-2f
     }
 }
