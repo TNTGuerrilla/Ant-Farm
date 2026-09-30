@@ -34,8 +34,22 @@ class ViewCameraTest {
 
     @Test
     fun zoomStaysWithinLimits() {
-        cam.placeAt(0f, 0f, 0.3f)
+        cam.placeAt(0f, 0f, 0.3f, 1080)
         repeat(50) { cam.zoomBy(2f, 1080) }
         assertEquals(cam.maxMmPerPx(1080), cam.mmPerPx, 1e-5f)
+    }
+
+    @Test
+    fun placeAtClampsTheZoom() {
+        cam.placeAt(0f, 0f, 5f, 1080)
+        assertEquals(cam.maxMmPerPx(1080), cam.mmPerPx, 1e-5f)
+    }
+
+    @Test
+    fun panMovesAlongTheCameraAxes() {
+        cam.placeAt(0f, 0f, 0.5f, 1080)
+        cam.pan(10f, -4f)
+        assertEquals(5f, cam.centerX, 1e-5f)
+        assertEquals(-2f, cam.centerY, 1e-5f)
     }
 }

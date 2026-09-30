@@ -161,7 +161,7 @@ class AntApp(private val label: String, private val world: World, private val tv
 
     private fun drawTop(dt: Float) {
         val h = Gdx.graphics.height
-        if (!topCam.placed) topCam.placeAt(world.surface.entranceX, world.surface.entranceY, 0.4f)
+        if (!topCam.placed) topCam.placeAt(world.surface.entranceX, world.surface.entranceY, 0.4f, h)
         val a = followed
         if (!manualTop && a != null && a.space == Space.SURFACE) topCam.follow(a.x, a.y, h, dt)
         ortho.position.set(topCam.centerX, topCam.centerY, 0f)

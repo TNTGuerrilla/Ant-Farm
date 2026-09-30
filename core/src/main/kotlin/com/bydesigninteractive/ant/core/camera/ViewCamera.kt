@@ -39,15 +39,15 @@ class ViewCamera {
 
     /** Eases toward framing the box from (minX, minY) to (maxX, maxY). */
     fun frame(minX: Float, minY: Float, maxX: Float, maxY: Float, screenW: Int, screenH: Int, dt: Float) {
-        ease((minX + maxX) / 2, (minY + maxY) / 2, fitZoom(maxX - minX, maxY - minY, screenW, screenH), dt)
+        ease((minX + maxX) / 2, (minY + maxY) / 2, fitZoom(maxX - minX, maxY - minY, screenW, screenH), screenH, dt)
     }
 
     /** Eases toward centering on (x, y) at the current zoom. */
     fun follow(x: Float, y: Float, screenH: Int, dt: Float) {
-        ease(x, y, mmPerPx.coerceIn(minMmPerPx(screenH), maxMmPerPx(screenH)), dt)
+        ease(x, y, mmPerPx.coerceIn(minMmPerPx(screenH), maxMmPerPx(screenH)), screenH, dt)
     }
 
-    /** Moves the center by a distance in screen pixels. */
+    /** Moves the center by screen pixels: dxPx along the camera's x axis, dyPx along its y axis (y up on the surface map, depth downward in the nest). */
     fun pan(dxPx: Float, dyPx: Float) {
         centerX += dxPx * mmPerPx
         centerY += dyPx * mmPerPx
@@ -57,16 +57,16 @@ class ViewCamera {
         mmPerPx = (mmPerPx * factor).coerceIn(minMmPerPx(screenH), maxMmPerPx(screenH))
     }
 
-    fun placeAt(x: Float, y: Float, zoom: Float) {
+    fun placeAt(x: Float, y: Float, zoom: Float, screenH: Int) {
         centerX = x
         centerY = y
-        mmPerPx = zoom
+        mmPerPx = zoom.coerceIn(minMmPerPx(screenH), maxMmPerPx(screenH))
         placed = true
     }
 
-    private fun ease(x: Float, y: Float, zoom: Float, dt: Float) {
+    private fun ease(x: Float, y: Float, zoom: Float, screenH: Int, dt: Float) {
         if (!placed) {
-            placeAt(x, y, zoom)
+            placeAt(x, y, zoom, screenH)
             return
         }
         val k = 1f - exp(-EASE_RATE * dt)
