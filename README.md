@@ -27,22 +27,26 @@ The desktop app runs a young colony: scripted diggers extend the nest and script
 
 Keys: Tab cycles views, Space pauses, 1/2/3 set speed 1x/4x/16x, WASD or arrows pan, +/- or the mouse wheel zoom, F follows the next forager, P toggles the trail overlay; in the 3D debug view the arrows pick the ant. `--seed=N` picks the world, and `--stub` runs the M0 stub (`.\gradlew.bat :desktop:run --args="--stub"`).
 
+## On the TV
+
+The TV dream and the launcher activity run the app (milestone M1b-2a). It starts in the 3D debug view; OK cycles the views and Back ends the dream. The simulation runs on its own thread at 20 ticks per second, and the log (tag `AntFarm`) prints ticks per second, milliseconds per tick and frame times every 10 s.
+
 ## Milestone M0: the TV stub
 
-The TV dream still runs the M0 stub, which checks a TV before real work:
+The M0 stub (`--stub` on desktop) checked a TV before real work:
 
 1. Remote keys reach an interactive dream. The overlay lists keys twice: as the dream's window received them, and as libGDX delivered them.
 2. 1,000 moving ant sprites hold the frame rate. Up doubles the sprite count and Down halves it, so the headroom can be found.
 3. A 20 MB background save causes no visible hitch. The first write runs 10 s after start and then every 30 s; Center starts one now. The overlay shows the write time and the frames rendered while it ran.
 
-To try it on a Google TV, connect adb to the TV (network debugging), then install it, note the current screensaver so it can be restored, and select this one:
+To try the app on a Google TV, connect adb to the TV (network debugging), then install it, note the current screensaver so it can be restored, and select this one:
 
 ```powershell
 $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 & $adb install -r android\build\outputs\apk\debug\android-debug.apk
 & $adb shell settings get secure screensaver_components
 & $adb shell settings put secure screensaver_components com.bydesigninteractive.ant/.AntDream
-& $adb logcat -s AntM0
+& $adb logcat -s AntFarm
 ```
 
 Some TV firmware (TCL, for one) refuses to start a third-party dream until the app is allowed to auto-start:
