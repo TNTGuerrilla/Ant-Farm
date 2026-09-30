@@ -92,6 +92,7 @@ class AntApp(private val label: String, private val world: World, private val tv
     }
 
     override fun resize(width: Int, height: Int) {
+        if (width <= 0 || height <= 0) return
         ortho.viewportWidth = width.toFloat()
         ortho.viewportHeight = height.toFloat()
         renderer3d.resize(width, height)

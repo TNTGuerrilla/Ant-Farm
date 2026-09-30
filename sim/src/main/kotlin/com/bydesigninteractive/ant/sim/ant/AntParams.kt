@@ -3,9 +3,9 @@ package com.bydesigninteractive.ant.sim.ant
 /**
  * Every tunable constant of the scripted ants. Section numbers refer to the simulation reference.
  *
- * Calibrated against the Gruter 2012 scenario test (GruterScenarioTest), so that 30 foragers
- * forage alone, trails form above about 75 foragers and lock onto one of two equal sources, and a
- * crowded colony switches to a richer source offered later:
+ * Calibrated against the Gruter 2012 scenario test (GruterScenarioTest). No stable trail forms
+ * with 30 foragers; a trail with symmetry breaking forms with 150 foragers on one of two equal
+ * sources, and a crowded colony switches to a richer source offered later:
  * - trailThreshold 1.96 (from 4): lowered so 150 foragers keep a trail while 30 do not.
  * - markAmount 2.25 (from 1): raised so trails at 150 foragers are strong enough to follow.
  * - trailDiffusion 0.025 (from 0.05): halved to keep trails narrow and concentrated.
