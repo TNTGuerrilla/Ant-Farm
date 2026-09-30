@@ -15,10 +15,10 @@ const val PELLET_HEIGHT = 0.01f
  * The ground: z = h(x, y) in surface millimeters. The base relief is seeded value noise (rolling
  * of about +/-15 mm over about 30 cm, bumps of about 1.5 mm), cached per 50 cm chunk on a 2 mm
  * grid the first time the chunk is used. Dumped spoil raises it. Coordinates outside the map are
- * clamped to its edge.
+ * clamped to its edge. Not thread-safe: it reuses a scratch array (one simulation thread).
  */
 class HeightField(private val seed: Long, private val spoil: ChunkedField) {
-    private val grids = HashMap<Int, FloatArray>()
+    private val grids = arrayOfNulls<FloatArray>(CHUNKS * CHUNKS)
     private val slopeScratch = FloatArray(2)
 
     /** The seeded relief without spoil. */
@@ -27,7 +27,8 @@ class HeightField(private val seed: Long, private val spoil: ChunkedField) {
         val cy = y.coerceIn(0f, MAX)
         val kx = (cx / CHUNK_MM).toInt().coerceAtMost(CHUNKS - 1)
         val ky = (cy / CHUNK_MM).toInt().coerceAtMost(CHUNKS - 1)
-        val grid = grids.getOrPut(kx + ky * CHUNKS) { build(kx, ky) }
+        val k = kx + ky * CHUNKS
+        val grid = grids[k] ?: build(kx, ky).also { grids[k] = it }
         val u = (cx - kx * CHUNK_MM) / GRID_MM
         val v = (cy - ky * CHUNK_MM) / GRID_MM
         val i = floor(u).toInt().coerceAtMost(CELLS - 1)

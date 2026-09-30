@@ -49,6 +49,8 @@ class HeightFieldTest {
         ground.slope(3210f, 4321f, out)
         val dx = (ground.height(3211f, 4321f) - ground.height(3209f, 4321f)) / 2f
         assertEquals(dx, out[0], 1e-3f)
+        val dy = (ground.height(3210f, 4322f) - ground.height(3210f, 4320f)) / 2f
+        assertEquals(dy, out[1], 1e-3f)
     }
 
     @Test
