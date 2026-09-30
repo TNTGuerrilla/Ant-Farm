@@ -1,0 +1,77 @@
+package com.bydesigninteractive.ant.sim.ant
+
+import com.bydesigninteractive.ant.sim.World
+import com.bydesigninteractive.ant.sim.world.FoodKind
+import com.bydesigninteractive.ant.sim.world.FoodSource
+import kotlin.math.hypot
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class ForagerTest {
+    private fun world(seed: Long, quality: Float, foragers: Int): World {
+        val w = World(seed)
+        w.predig(3)
+        w.surface.foods += FoodSource(0, FoodKind.HONEYDEW, w.surface.entranceX + 150f, w.surface.entranceY, 15f, quality)
+        repeat(foragers) { w.addAnt(Role.FORAGER) }
+        return w
+    }
+
+    private fun run(w: World, minutes: Int) = repeat(minutes * 60 * 20) { w.step() }
+
+    @Test
+    fun foragersFindFoodAndBringItHome() {
+        val w = world(5, 1f, 10)
+        run(w, 20)
+        assertTrue(w.feedEvents.size >= 5, "feeds ${w.feedEvents.size}")
+        assertTrue(w.unloads >= 3, "unloads ${w.unloads}")
+    }
+
+    @Test
+    fun onlyAntsThatFilledUpLayTrail() {
+        val w = world(5, 0f, 10) // nobody can fill to their desired volume
+        run(w, 20)
+        assertTrue(w.feedEvents.isNotEmpty())
+        assertEquals(0f, w.surface.trail.max())
+    }
+
+    @Test
+    fun fullForagersLayATrail() {
+        val w = world(5, 1f, 10)
+        run(w, 20)
+        assertTrue(w.surface.trail.max() > 0f)
+    }
+
+    @Test
+    fun pathIntegrationErrorGrowsWithDistance() {
+        val w = World(3)
+        w.predig(1)
+        fun meanError(steps: Int): Float {
+            var sum = 0f
+            repeat(200) {
+                val a = w.addAnt(Role.FORAGER)
+                w.exitNest(a)
+                a.heading = 0f
+                repeat(steps) { SurfaceMotion.advance(w, a, 20f) }
+                sum += hypot(a.homeDx - (a.x - w.surface.entranceX), a.homeDy - (a.y - w.surface.entranceY))
+            }
+            return sum / 200
+        }
+        assertTrue(meanError(2000) > meanError(100) * 2)
+    }
+
+    @Test
+    fun theSameSeedGivesTheSameRun() {
+        val a = world(9, 1f, 30)
+        val b = world(9, 1f, 30)
+        repeat(5000) {
+            a.step()
+            b.step()
+        }
+        for (i in a.ants.indices) {
+            assertEquals(a.ants[i].x, b.ants[i].x)
+            assertEquals(a.ants[i].y, b.ants[i].y)
+            assertEquals(a.ants[i].state, b.ants[i].state)
+        }
+    }
+}

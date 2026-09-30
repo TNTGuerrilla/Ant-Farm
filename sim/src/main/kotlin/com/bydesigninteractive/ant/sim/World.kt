@@ -2,6 +2,7 @@ package com.bydesigninteractive.ant.sim
 
 import com.bydesigninteractive.ant.sim.ant.Ant
 import com.bydesigninteractive.ant.sim.ant.Digger
+import com.bydesigninteractive.ant.sim.ant.Forager
 import com.bydesigninteractive.ant.sim.ant.AntParams
 import com.bydesigninteractive.ant.sim.ant.AntState
 import com.bydesigninteractive.ant.sim.ant.Role
@@ -117,9 +118,8 @@ class World(
         tick++
     }
 
-    // Task 8 replaces the forager branch with its state machine.
     private fun behave(a: Ant) = when (a.role) {
-        Role.FORAGER -> Unit
+        Role.FORAGER -> Forager.update(this, a)
         Role.DIGGER -> Digger.update(this, a)
     }
 
