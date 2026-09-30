@@ -16,8 +16,9 @@ const val PELLET_HEIGHT = 0.01f
  * The ground: z = h(x, y) in surface millimeters. The base relief is seeded value noise (rolling
  * of about +/-15 mm over about 30 cm, bumps of about 1.5 mm), cached per 50 cm chunk on a 4 mm
  * grid of 16-bit values in micrometer steps (about 31 KB per chunk, 8 MB for the whole map) the
- * first time the chunk is used. The 1.5 mm bumps have a 20 mm scale, which the grid resolves. Dumped spoil raises it. Coordinates outside the map are
- * clamped to its edge. Not thread-safe: it reuses a scratch array (one simulation thread).
+ * first time the chunk is used. The 1.5 mm bumps have a 20 mm scale, which the grid resolves.
+ * Dumped spoil raises it. Coordinates outside the map are clamped to its edge. Not thread-safe: it
+ * reuses a scratch array (one simulation thread).
  */
 class HeightField(private val seed: Long, private val spoil: ChunkedField) {
     private val grids = arrayOfNulls<ShortArray>(CHUNKS * CHUNKS)

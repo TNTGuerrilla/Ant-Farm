@@ -13,11 +13,21 @@ import com.bydesigninteractive.ant.sim.scenario.Scenarios
  * dream; Back still ends it (DreamService handles that itself) and Home leaves as usual.
  */
 class AntDream : AndroidDaydream() {
+    private var app: AntApp? = null
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         isInteractive = true
         isScreenBright = true
-        initialize(AntApp("dream", Scenarios.starter(WORLD_SEED), tv = true), gdxConfig())
+        val created = AntApp("dream", Scenarios.starter(WORLD_SEED), tv = true)
+        app = created
+        initialize(created, gdxConfig())
+    }
+
+    /** A dream cancelled between attach and start never gets dispose, so stop the simulation here too. */
+    override fun onDetachedFromWindow() {
+        app?.shutdown()
+        super.onDetachedFromWindow()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

@@ -6,6 +6,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * Triple buffering between the simulation thread (writer) and the render thread (reader). The
  * writer fills [writable] and calls [publish]; the reader calls [takeFresh]. Publication is one
  * atomic swap, so neither side blocks and the reader never sees a half-written snapshot.
+ *
+ * A snapshot returned by [takeFresh] is valid only until the next [takeFresh], because its slot
+ * then goes back to the writer. A reader that needs it longer must copy it (as `AntStates` does).
  */
 class SnapshotBuffer {
     private val slots = Array(3) { Snapshot() }

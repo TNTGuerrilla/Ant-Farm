@@ -7,6 +7,7 @@ interface Clock {
     fun sleepNanos(nanos: Long)
 }
 
+/** The real clock: [System.nanoTime] and [Thread.sleep]. */
 object SystemClock : Clock {
     override fun nanos(): Long = System.nanoTime()
 

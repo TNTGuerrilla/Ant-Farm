@@ -367,8 +367,16 @@ class AntApp(private val label: String, private val world: World, private val tv
         if (!paused) runner.send(Command.Resume)
     }
 
+    /**
+     * Stops the simulation thread. Safe to call more than once, after [dispose], or before
+     * [create] has run (then there is nothing to stop).
+     */
+    fun shutdown() {
+        if (::runner.isInitialized) runner.stop()
+    }
+
     override fun dispose() {
-        runner.stop()
+        shutdown()
         renderer3d.dispose()
         topRenderer.dispose()
         nestRenderer.dispose()

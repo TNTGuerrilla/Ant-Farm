@@ -1,5 +1,9 @@
 package com.bydesigninteractive.ant.core.engine
 
+/**
+ * Tick statistics over the window: [ticksPerSecond] completed, and the average and maximum
+ * duration of a tick in milliseconds ([msPerTickAvg], [msPerTickMax]).
+ */
 data class TickSummary(val ticksPerSecond: Float, val msPerTickAvg: Float, val msPerTickMax: Float)
 
 /** Tick durations over a sliding time window, for the HUD and the log (Minecraft's TPS and MSPT). */
@@ -9,6 +13,7 @@ class TickStats(private val windowNanos: Long = 10_000_000_000L) {
     private var head = 0
     private var count = 0
 
+    /** Records one tick that took [tickNanos] and finished at [endNanos] (the same clock as [summary]'s `now`). */
     fun record(tickNanos: Long, endNanos: Long) {
         ends[head] = endNanos
         durations[head] = tickNanos
@@ -16,6 +21,7 @@ class TickStats(private val windowNanos: Long = 10_000_000_000L) {
         if (count < CAPACITY) count++
     }
 
+    /** The ticks that ended within the window before [now], as a rate and average and maximum duration. */
     fun summary(now: Long): TickSummary {
         var n = 0
         var sum = 0L

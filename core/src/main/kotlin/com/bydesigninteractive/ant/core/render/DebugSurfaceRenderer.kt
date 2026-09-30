@@ -38,8 +38,9 @@ import kotlin.math.floor
  * It reads only published state: rocks from [Published.rocks] and [Published.placed], foods and
  * ants from the caller. The ground is its own [HeightField] from the seed (the base relief is a
  * pure function of the seed), with a spoil field mirrored from the published overlays, since the
- * simulation's height field is not thread-safe. The ground mesh is rebuilt when the published
- * spoil near the camera changes.
+ * simulation's height field is not thread-safe. The ground mesh is rebuilt at once when the camera
+ * moves to a new patch, and at most every 3 s when published spoil under the patch changes (the
+ * mirror stays current in between).
  */
 class DebugSurfaceRenderer(seed: Long, private val published: Published) : Disposable {
     val camera = PerspectiveCamera(FOV, 1f, 1f).apply {
@@ -60,6 +61,7 @@ class DebugSurfaceRenderer(seed: Long, private val published: Published) : Dispo
     private val ground = HeightField(seed, spoil)
     private val spoilStamps = LongArray(CHUNKS * CHUNKS) { -1L }
     private var groundDirty = false
+    private var lastRebuildNanos = 0L
     private val models = arrayOf(sphere, cylinder, box)
     private val pools = Array(models.size) { ArrayList<ModelInstance>() }
     private val used = IntArray(models.size)
@@ -91,7 +93,13 @@ class DebugSurfaceRenderer(seed: Long, private val published: Published) : Dispo
         val ccx = floor(fx / CHUNK_MM).toInt()
         val ccy = floor(fy / CHUNK_MM).toInt()
         syncSpoil(ccx, ccy)
-        if (groundDirty || groundX.isNaN() || abs(fx - groundX) > REBUILD_MM || abs(fy - groundY) > REBUILD_MM) rebuildGround(fx, fy)
+        val now = System.nanoTime()
+        val moved = groundX.isNaN() || abs(fx - groundX) > REBUILD_MM || abs(fy - groundY) > REBUILD_MM
+        // A moved patch rebuilds at once; spoil changes inside the patch wait for the throttle.
+        if (moved || (groundDirty && now - lastRebuildNanos >= SPOIL_REBUILD_NANOS)) {
+            rebuildGround(fx, fy)
+            lastRebuildNanos = now
+        }
         used.fill(0)
         batch.begin(camera)
         groundInstance?.let { batch.render(it, environment) }
@@ -182,8 +190,16 @@ class DebugSurfaceRenderer(seed: Long, private val published: Published) : Dispo
             if (fresh == null && old == null) continue
             if (fresh != null && old != null && fresh.contentEquals(old)) continue
             spoil.setChunk(cx, cy, fresh)
-            groundDirty = true
+            if (overlapsPatch(cx, cy)) groundDirty = true
         }
+    }
+
+    /** Whether chunk ([cx], [cy]) overlaps the ground patch as last built (true if none is built yet). */
+    private fun overlapsPatch(cx: Int, cy: Int): Boolean {
+        if (groundX.isNaN()) return true
+        val half = GROUND_CELLS * SPACING / 2f
+        return cx * CHUNK_MM < groundX + half && (cx + 1) * CHUNK_MM > groundX - half &&
+            cy * CHUNK_MM < groundY + half && (cy + 1) * CHUNK_MM > groundY - half
     }
 
     /** A grid of the ground heights, 2 m across at 20 mm spacing, centered on (cx, cy). */
@@ -236,6 +252,7 @@ class DebugSurfaceRenderer(seed: Long, private val published: Published) : Dispo
         const val GROUND_CELLS = 100
         const val SPACING = 20f
         const val REBUILD_MM = 400f
+        const val SPOIL_REBUILD_NANOS = 3_000_000_000L
         const val SPHERE = 0
         const val CYLINDER = 1
         const val BOX = 2

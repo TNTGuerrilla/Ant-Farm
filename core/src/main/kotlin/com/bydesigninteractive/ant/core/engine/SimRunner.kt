@@ -92,8 +92,11 @@ class SimRunner(
             val t0 = clock.nanos()
             world.step()
             val t1 = clock.nanos()
-            stats.record(t1 - t0, t1)
+            // The recorded tick time covers step and publish, the thread's real cost per tick. The
+            // publish reports the stats as they stood before this tick, so it lags by one tick.
             published.publish(world, t1, stats, schedule)
+            val t2 = clock.nanos()
+            stats.record(t2 - t0, t2)
             val resetsBefore = schedule.resets
             schedule.ticked(clock.nanos())
             if (schedule.resets > resetsBefore) {
