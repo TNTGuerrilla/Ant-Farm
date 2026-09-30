@@ -17,6 +17,7 @@ import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.Disposable
 import com.bydesigninteractive.ant.core.camera.ChaseCamera3
 import com.bydesigninteractive.ant.sim.World
+import com.bydesigninteractive.ant.sim.ant.Ant
 import com.bydesigninteractive.ant.sim.ant.Space
 import com.bydesigninteractive.ant.sim.world.CHUNKS
 import com.bydesigninteractive.ant.sim.world.CHUNK_MM
@@ -25,8 +26,11 @@ import kotlin.math.floor
 
 /**
  * A plain 3D view of the surface for checking the simulation: the ground as a grid mesh around
- * the camera, rocks and food lumps as spheres, stems as cylinders, ants as small boxes tilted to
- * their normals. M1b-2 replaces it with the low-poly look.
+ * the camera, rocks and food lumps as spheres, stems as cylinders, ants as a gaster box, a thorax
+ * box and a head sphere tilted to their normals. M1b-2 replaces it with the low-poly look.
+ *
+ * Ants can appear to sink into rocks here: the simulation surface is the lumpy, blended rock,
+ * while this view draws smooth spheres. M1b-2 builds meshes from the same SDF, which fixes it.
  */
 class DebugSurfaceRenderer(private val world: World) : Disposable {
     val camera = PerspectiveCamera(FOV, 1f, 1f).apply {
@@ -90,16 +94,31 @@ class DebugSurfaceRenderer(private val world: World) : Disposable {
         for (a in world.ants) {
             if (a.space != Space.SURFACE) continue
             if (abs(a.x - fx) > VIEW_MM || abs(a.y - fy) > VIEW_MM) continue
-            val i = next(box, ANT)
             xAxis.set(a.fx, a.fz, -a.fy)
             yAxis.set(a.nx, a.nz, -a.ny)
             zAxis.set(xAxis).crs(yAxis)
-            origin.set(a.x + a.nx * 0.75f, a.z + a.nz * 0.75f, -(a.y + a.ny * 0.75f))
-            i.transform.set(xAxis, yAxis, zAxis, origin)
-            i.transform.scale(5f, 1.5f, 2.5f)
-            batch.render(i, environment)
+            antPart(box, ANT, a, -1.6f, 0.8f, 2.4f, 1.6f, 2.2f)
+            antPart(box, ANT, a, 0f, 0.6f, 1.8f, 1.2f, 1.2f)
+            antPart(sphere, HEAD, a, 1.8f, 0.8f, 0.8f, 0.8f, 0.8f)
         }
         batch.end()
+    }
+
+    /**
+     * Draws one ant part along the basis set up in [xAxis], [yAxis] and [zAxis]: [along] mm ahead
+     * of the ant position, lifted [lift] mm along the normal, scaled by the given sizes (the
+     * sphere model has radius 1, so pass the radius for it).
+     */
+    private fun antPart(model: Model, color: Color, a: Ant, along: Float, lift: Float, sx: Float, sy: Float, sz: Float) {
+        val i = next(model, color)
+        origin.set(
+            a.x + a.fx * along + a.nx * lift,
+            a.z + a.fz * along + a.nz * lift,
+            -(a.y + a.fy * along + a.ny * lift),
+        )
+        i.transform.set(xAxis, yAxis, zAxis, origin)
+        i.transform.scale(sx, sy, sz)
+        batch.render(i, environment)
     }
 
     private fun blob(x: Float, y: Float, z: Float, rx: Float, ry: Float, rz: Float, color: Color) {
@@ -171,5 +190,6 @@ class DebugSurfaceRenderer(private val world: World) : Disposable {
         val FOOD = Color(0.80f, 0.55f, 0.20f, 1f)
         val STEM = Color(0.30f, 0.50f, 0.18f, 1f)
         val ANT = Color(0.08f, 0.06f, 0.05f, 1f)
+        val HEAD = Color(0.25f, 0.12f, 0.08f, 1f)
     }
 }

@@ -14,6 +14,7 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion
 import com.badlogic.gdx.math.Matrix4
 import com.bydesigninteractive.ant.core.camera.ChaseCamera3
 import com.bydesigninteractive.ant.core.camera.ViewCamera
+import com.bydesigninteractive.ant.core.render.AntAnimator
 import com.bydesigninteractive.ant.core.render.ChunkTextures
 import com.bydesigninteractive.ant.core.render.DebugSurfaceRenderer
 import com.bydesigninteractive.ant.core.render.NestRenderer
@@ -47,8 +48,9 @@ class AntApp(private val label: String, private val world: World, private val tv
     private lateinit var batch: SpriteBatch
     private lateinit var font: BitmapFont
     private lateinit var pixel: Texture
-    private lateinit var antTexture: Texture
-    private lateinit var antRegion: TextureRegion
+    private lateinit var antTextures: Array<Texture>
+    private lateinit var antRegions: Array<TextureRegion>
+    private val animator = AntAnimator()
     private lateinit var chunkTextures: ChunkTextures
     private lateinit var nestRenderer: NestRenderer
     private lateinit var topRenderer: SurfaceTopRenderer
@@ -71,8 +73,8 @@ class AntApp(private val label: String, private val world: World, private val tv
             region.texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear)
         }
         pixel = Sprites.pixel()
-        antTexture = Sprites.ant()
-        antRegion = TextureRegion(antTexture)
+        antTextures = Sprites.antFrames()
+        antRegions = Array(antTextures.size) { TextureRegion(antTextures[it]) }
         chunkTextures = ChunkTextures(world.surface)
         nestRenderer = NestRenderer(world)
         topRenderer = SurfaceTopRenderer(world, chunkTextures)
@@ -125,8 +127,13 @@ class AntApp(private val label: String, private val world: World, private val tv
     }
 
     private fun advance(dt: Float) {
-        if (paused) return
-        accumulator += dt * SPEEDS[speedIndex]
+        if (paused) {
+            animator.advance(world.ants, 0f)
+            return
+        }
+        val simDt = dt * SPEEDS[speedIndex]
+        animator.advance(world.ants, simDt)
+        accumulator += simDt
         val start = System.nanoTime()
         while (accumulator >= DT) {
             world.step()
@@ -155,7 +162,7 @@ class AntApp(private val label: String, private val world: World, private val tv
         ortho.update()
         batch.projectionMatrix = ortho.combined
         batch.begin()
-        nestRenderer.draw(batch, ortho, antRegion, pixel)
+        nestRenderer.draw(batch, ortho, antRegions, animator, pixel)
         batch.end()
     }
 
@@ -169,7 +176,7 @@ class AntApp(private val label: String, private val world: World, private val tv
         ortho.update()
         batch.projectionMatrix = ortho.combined
         batch.begin()
-        topRenderer.draw(batch, ortho, antRegion, pixel, showTrail, dt)
+        topRenderer.draw(batch, ortho, antRegions, animator, pixel, showTrail, dt)
         batch.end()
         chunkTextures.evict((topCam.centerX / CHUNK_MM).toInt(), (topCam.centerY / CHUNK_MM).toInt(), 3)
     }
@@ -281,7 +288,7 @@ class AntApp(private val label: String, private val world: World, private val tv
         topRenderer.dispose()
         nestRenderer.dispose()
         chunkTextures.dispose()
-        antTexture.dispose()
+        antTextures.forEach { it.dispose() }
         pixel.dispose()
         font.dispose()
         batch.dispose()

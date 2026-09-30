@@ -25,7 +25,7 @@ class NestRenderer(private val world: World) : Disposable {
     private val versions = HashMap<Int, Long>()
     private var built = 0
 
-    fun draw(batch: SpriteBatch, cam: OrthographicCamera, ant: TextureRegion, pixel: Texture) {
+    fun draw(batch: SpriteBatch, cam: OrthographicCamera, ants: Array<TextureRegion>, animator: AntAnimator, pixel: Texture) {
         built = 0
         val g = world.nest
         val halfW = cam.viewportWidth * cam.zoom / 2
@@ -52,7 +52,7 @@ class NestRenderer(private val world: World) : Disposable {
         batch.color = Color.WHITE
         for (a in world.ants) {
             if (a.space != Space.NEST) continue
-            batch.draw(ant, a.x - 2.5f, -a.y - 1.25f, 2.5f, 1.25f, 5f, 2.5f, 1f, 1f, -a.heading * MathUtils.radiansToDegrees)
+            batch.draw(ants[animator.frame(a)], a.x - 2.5f, -a.y - 1.25f, 2.5f, 1.25f, 5f, 2.5f, 1f, 1f, -a.heading * MathUtils.radiansToDegrees)
         }
     }
 
