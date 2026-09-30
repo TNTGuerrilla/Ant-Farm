@@ -2712,3 +2712,55 @@ git commit -m "M1b-1: status and notes"
 - **Performance.** A surface step is about 20 to 35 SDF evaluations. Each evaluation is the ground (a cached grid read plus the spoil lookup, five heights for the slope) and the few shapes near the point. The Task 8 benchmark is the number to watch; M1b-2 decides the TV budget from it.
 - **Stem climbing is scripted.** The odour cue and climb-on-touch rule are stand-ins; M2's brains replace them.
 - **Spoil height** is small per pellet (0.01 mm); a visible mound needs thousands of pellets, which is realistic.
+
+---
+
+## Added after the final review
+
+### Task 12: Narrow trails (no 3D diffusion), side-effect-free reads, recalibration
+
+Added after the final review of M1b-1 (see `.git/sdd/final-review.md`, items I1, I2, I4, I6).
+
+**Why:** `Field3` diffuses the trail in 3D, so marks spread into soil and air where the surface never reads them. A 5-minute-old mark is about 10x weaker than in M1, which forced `markAmount` up to 17.09. The owner's model is a narrow trail on the ground, and with diffusion off M1's values (markAmount 2.25, trailThreshold 1.96) passed both colony-size Gruter checks with wide margins in the reviewer's probe (the switch check was not tried).
+
+**Requirements:**
+
+1. **No trail diffusion.** Set `AntParams.trailDiffusion = 0f`. The trail `Field3` becomes lazy (decay on touch, periodic sweep), like home scent.
+2. **Restore M1 calibration as the starting point:** `markAmount = 2.25f`, `trailThreshold = 1.96f`. Keep every other `AntParams` value.
+3. **Behavior-scale release.** Give `Field3` a constructor parameter `releaseBelow: Float = 1e-4f` (replacing the `FADED` constant). `SurfaceMap` constructs the trail with `releaseBelow = 1e-2f` (a trail at that strength is followed with a chance of about 1e-4; reference section 5) and home scent with the default.
+4. **Side-effect-free reads for `core` (I4).** `Field3.get` and `add` may keep catching blocks up (simulation use). Add `peek(x, y, z): Float`, which computes the same trilinear value using `v * exp(-k * dt * (now - tick))` without writing anything back. Make `max()` and `projectMax(...)` side-effect free the same way (no `catchUp` writes). Switch `core` (`SurfaceTopRenderer`, `DebugReadout`) to use only these. Document on `Field3` which calls mutate.
+5. **Rock placement independent of food history (I6, minimal).** Add `SurfaceMap.removeFood(food)` that removes it from `foods` and records it in a grow-only `pastFoods` list; `Forager` uses it instead of `foods.remove`. `SurfaceSdf.addBlob` excludes blobs near `foods` and `pastFoods`. Renderer-triggered chunk generation is then equivalent to simulation-triggered generation for any world whose food is placed at start (all current scenarios). Document the remaining limit (food added at run time) in the `SurfaceSdf` KDoc.
+6. **Determinism with rendering (test).** Add a test to `SurfaceRunTest`: two `Scenarios.starter(5)` worlds stepped 5,000 ticks; in one of them, every 20 ticks do render-style reads: `trail.projectMax` on the 3 x 3 chunks around the entrance, `trail.max()`, `homeScent.peek` at a few points, and `sdf.ownBlobs` for the 5 x 5 chunks around the entrance. Assert every ant's x, y, z and state match, and `ants.size` matches.
+7. **Field3 tests** for `peek` (equals `get` numerically, and a following `get`/`add` sequence gives the same results whether or not `peek` was called between steps) and for `releaseBelow`.
+8. **Gruter.** Run `GruterScenarioTest`. If all three checks pass with the M1 values, done. If not, recalibrate from the M1 values by the Task 8 table and rules, strictly: the listed knobs in the listed order for the failing check, one knob changed per attempt, at most eight attempts, never loosen the test. (`trailDiffusion` stays 0 and is not a knob.)
+9. **AntParams KDoc:** replace the Task 8 calibration note with what this task found (diffusion removed and why, the final values, per-check measured values and margins).
+10. Run the whole `:sim:test` and `:core:test :desktop:classes`; commit: `M1b-1: narrow trails without 3D diffusion, side-effect-free field reads, M1 calibration restored`.
+
+**Measured values to report:** the Gruter per-seed values for all three checks; the trail `blockCount()` after 20 simulated minutes of `Scenarios.gruter(1, 150)` before and after (from a temporary probe, deleted before committing); the benchmark ms per tick.
+
+### Task 13: Walking legs in the 2D views, and a front end on the 3D debug ants
+
+Added after the owner's review of M1b-1. Rendering only (`core`); no simulation change.
+
+**1. Leg animation for 2D ant sprites (nest view and top-down view).**
+- `Sprites` gains `antFrames(): Array<Texture>` returning three 32 x 16 frames of the existing top-down worker (facing +x, same body ellipses and antennae as `ant()`), differing only in the legs, drawn as a tripod gait (Lasius walk with alternating tripods):
+  - Frame 0: tripod A (front-left, middle-right, rear-left) swung forward, tripod B swung back.
+  - Frame 1: neutral legs, exactly as the current `ant()` sprite.
+  - Frame 2: the mirror of frame 0 (tripod B forward, tripod A back).
+  - "Forward" means the leg tip moves about 2 px toward +x from its neutral position, "back" about 2 px toward -x. Legs keep their body attachment points.
+- A new `core/render/AntAnimator.kt` keeps a gait phase per ant (indexed by `Ant.id`, array grown on demand) and gives the frame to draw:
+  - `advance(ants: List<Ant>, simSeconds: Float)`: for each ant, `phase += a.speed * simSeconds / STRIDE_MM` with `STRIDE_MM = 3f` (a 5 mm worker's step).
+  - `frame(a: Ant): Int`: if `a.speed == 0f`, frame 1; otherwise the cycle 0, 1, 2, 1 by `floor(phase * 4) mod 4`.
+- `AntApp` owns one `AntAnimator` and calls `advance(world.ants, simDt)` once per frame, where `simDt` is the simulated time this frame (0 when paused; the frame's dt times the speed multiplier otherwise), so the legs speed up with 4x and 16x and stop when paused.
+- `NestRenderer` and `SurfaceTopRenderer` take the three frame regions and the animator, and draw each ant with its current frame instead of the single `ant` region. Dispose the frame textures in `AntApp.dispose()`.
+- A unit test for `AntAnimator` (pure logic; construct `Ant` objects from `sim` directly): standing ants show frame 1; a walking ant cycles 0, 1, 2, 1 as its phase advances by quarter strides; the phase advances in proportion to speed and simulated time (twice the speed gives twice the phase); zero simulated time (paused) does not advance it.
+
+**2. A visible front on the 3D debug ants.**
+- In `DebugSurfaceRenderer`, draw each surface ant as three parts oriented by its forward `f` and normal `n` (same basis as now): a gaster box behind (about 2.4 x 1.6 x 2.2 mm, centered 1.6 mm behind the ant position along `f`), a thorax box (about 1.8 x 1.2 x 1.2 mm, at the position), and a head sphere (radius about 0.8 mm, centered 1.8 mm ahead along `f`), all lifted along `n` by their half heights so they sit on the surface. Use a slightly different dark color for the head (for example 0.25, 0.12, 0.08) so the facing reads at a distance.
+- Keep the per-instance color handling as it is (the existing `next()` pool).
+
+**3. Rock clipping in the debug view is not fixed here.** The simulation surface is the lumpy, blended rock; the debug view draws smooth spheres, so ants walking on a bump appear inside the drawn sphere. M1b-2 builds meshes from the same SDF, which removes it. Add one sentence saying this to the `DebugSurfaceRenderer` KDoc.
+
+**Run:** `:core:test :desktop:classes`, and confirm the desktop app starts (launch `:desktop:run` in the background, about 25 s, check for exceptions and the start log line, then kill only that run's java process). The controller does the visual check.
+
+**Commit:** `M1b-1: walking legs in the 2D views and a head on the 3D debug ants`.
