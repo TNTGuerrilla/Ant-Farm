@@ -3,6 +3,7 @@ package com.bydesigninteractive.ant.sim.ant
 import com.bydesigninteractive.ant.sim.DT
 import com.bydesigninteractive.ant.sim.FeedEvent
 import com.bydesigninteractive.ant.sim.World
+import com.bydesigninteractive.ant.sim.world.FoodSource
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -15,6 +16,7 @@ import kotlin.math.sqrt
  * The scripted forager: leave the nest, search (joining trails with a chance that rises steeply
  * with their strength), feed, walk home by path integration laying trail if it filled up, unload
  * inside the nest, and go again. Values come from sections 3 to 5 of the simulation reference.
+ * On the 3D surface it steers through [SurfaceWalk] turns and facings.
  */
 internal object Forager {
     private const val HOME_VECTOR_DONE = 15f
@@ -69,24 +71,20 @@ internal object Forager {
             val dx = food.x - a.x
             val dy = food.y - a.y
             if (dx * dx + dy * dy <= food.radius * food.radius) {
-                a.food = food
-                a.onTrail = false
-                a.speed = 0f
-                a.timer = p.feedSeconds
-                a.state = AntState.FEED
+                startFeeding(w, a, food)
                 return
             }
-            a.heading = atan2(dy, dx)
-            SurfaceMotion.advance(w, a, p.surfaceSpeed)
+            SurfaceWalk.faceToward(a, food.x, food.y, food.z)
+            SurfaceWalk.step(w, a, p.surfaceSpeed)
             return
         }
-        SurfaceMotion.sense(w, a, s.trail)
+        SurfaceWalk.sense(w, a, s.trail)
         val strength = a.senseL + a.senseR
         if (a.onTrail) {
             if (strength < p.trailThreshold * p.trailLossFraction) {
                 a.onTrail = false
             } else {
-                SurfaceMotion.steerByGradient(w, a, p.trailTurnGain)
+                SurfaceWalk.steerByGradient(w, a, p.trailTurnGain)
                 keepOutward(a)
             }
         }
@@ -99,12 +97,20 @@ internal object Forager {
                 if (w.rng.nextFloat() < follow) {
                     a.onTrail = true
                 } else {
-                    a.heading += w.gaussian() * p.outTurnSd
+                    SurfaceWalk.turn(a, w.gaussian() * p.outTurnSd)
                     a.runLeft = w.exponential(p.outRunMean)
                 }
             }
         }
-        SurfaceMotion.advance(w, a, p.surfaceSpeed)
+        SurfaceWalk.step(w, a, p.surfaceSpeed)
+    }
+
+    private fun startFeeding(w: World, a: Ant, food: FoodSource) {
+        a.food = food
+        a.onTrail = false
+        a.speed = 0f
+        a.timer = w.params.feedSeconds
+        a.state = AntState.FEED
     }
 
     /**
@@ -121,10 +127,9 @@ internal object Forager {
         var total = 0f
         for (i in 0 until n) {
             val angle = i * 2f * PI.toFloat() / n
-            samples[i] = s.trail.get(
-                s.entranceX + cos(angle) * p.exitSenseRadius,
-                s.entranceY + sin(angle) * p.exitSenseRadius,
-            )
+            val x = s.entranceX + cos(angle) * p.exitSenseRadius
+            val y = s.entranceY + sin(angle) * p.exitSenseRadius
+            samples[i] = s.trail.get(x, y, s.ground.height(x, y))
             total += samples[i]
         }
         val t2 = total * total
@@ -144,14 +149,15 @@ internal object Forager {
                 break
             }
         }
-        a.heading = chosen * 2f * PI.toFloat() / n
+        SurfaceWalk.faceCompass(a, chosen * 2f * PI.toFloat() / n)
         a.onTrail = true
     }
 
     /** An outbound ant on a trail keeps walking away from home, never back along it. */
     private fun keepOutward(a: Ant) {
         if (a.homeDx * a.homeDx + a.homeDy * a.homeDy < OUTWARD_FROM * OUTWARD_FROM) return
-        if (cos(a.heading) * a.homeDx + sin(a.heading) * a.homeDy < 0f) a.heading += PI.toFloat()
+        if (SurfaceWalk.horizontalForward(a) < 0.5f) return // climbing: no compass sense of outward
+        if (SurfaceWalk.horizontalDot(a, a.homeDx, a.homeDy) < 0f) SurfaceWalk.turn(a, PI.toFloat())
     }
 
     private fun feed(w: World, a: Ant) {
@@ -186,23 +192,24 @@ internal object Forager {
             return
         }
         when {
-            toEntrance <= p.homeSightRadius -> a.heading = atan2(ey, ex)
+            toEntrance <= p.homeSightRadius ->
+                SurfaceWalk.faceToward(a, s.entranceX, s.entranceY, s.ground.height(s.entranceX, s.entranceY))
             a.homeDx * a.homeDx + a.homeDy * a.homeDy > HOME_VECTOR_DONE * HOME_VECTOR_DONE -> {
                 a.runLeft -= p.surfaceSpeed * DT
                 if (a.runLeft <= 0f) {
-                    a.heading = atan2(-a.homeDy, -a.homeDx) + w.gaussian() * p.homeTurnSd
+                    SurfaceWalk.faceCompass(a, atan2(-a.homeDy, -a.homeDx) + w.gaussian() * p.homeTurnSd)
                     a.runLeft = w.exponential(p.homeRunMean)
                 }
             }
             else -> {
                 // The home vector has run out short of the nest: climb the home-range scent.
-                SurfaceMotion.sense(w, a, s.homeScent)
-                SurfaceMotion.steerByGradient(w, a, p.trailTurnGain)
-                SurfaceMotion.wander(w, a, p.outRunMean, p.outTurnSd)
+                SurfaceWalk.sense(w, a, s.homeScent)
+                SurfaceWalk.steerByGradient(w, a, p.trailTurnGain)
+                SurfaceWalk.wander(w, a, p.outRunMean, p.outTurnSd)
             }
         }
         layTrail(w, a)
-        SurfaceMotion.advance(w, a, p.surfaceSpeed)
+        SurfaceWalk.step(w, a, p.surfaceSpeed)
     }
 
     /**
@@ -214,9 +221,9 @@ internal object Forager {
         if (!a.laysTrail || a.crop < a.desiredCrop) return
         if (w.rng.nextFloat() >= p.markChancePerMm * p.surfaceSpeed * DT) return
         val trail = w.surface.trail
-        val saturation = 1f / (1f + trail.get(a.x, a.y) / p.saturationLevel)
+        val saturation = 1f / (1f + trail.get(a.x, a.y, a.z) / p.saturationLevel)
         val crowd = w.surfaceIndex.countNear(a, p.crowdRadius)
         val crowding = 1f / (1f + CROWD_CUT * min(1f, crowd / p.crowdLevel.toFloat()))
-        trail.add(a.x, a.y, p.markAmount * saturation * crowding)
+        trail.add(a.x, a.y, a.z, p.markAmount * saturation * crowding)
     }
 }

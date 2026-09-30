@@ -8,6 +8,7 @@ import com.bydesigninteractive.ant.sim.ant.AntState
 import com.bydesigninteractive.ant.sim.ant.Role
 import com.bydesigninteractive.ant.sim.ant.Space
 import com.bydesigninteractive.ant.sim.ant.SpatialIndex
+import com.bydesigninteractive.ant.sim.ant.SurfaceWalk
 import com.bydesigninteractive.ant.sim.world.Excavation
 import com.bydesigninteractive.ant.sim.world.Material
 import com.bydesigninteractive.ant.sim.world.NestGenerator
@@ -39,6 +40,7 @@ class World(
     val params: AntParams = AntParams(),
     nestWidth: Int = 1200,
     nestDepth: Int = 1000,
+    rocks: Boolean = true,
 ) {
     val rng = Random(seed)
     val nest = NestGrid(NestGenerator(seed, nestWidth, nestDepth))
@@ -46,11 +48,15 @@ class World(
     val plan = NestPlan(seed, nestEntranceX)
     val excavation = Excavation(nest, plan)
     val paths = NestPaths(nest, excavation)
-    val surface = SurfaceMap(seed)
+    val surface = SurfaceMap(seed, params, rocks)
     val ants = ArrayList<Ant>()
     val surfaceIndex = SpatialIndex()
     /** Recent feeding events, oldest first, for the last [FEED_WINDOW_TICKS] ticks. */
     val feedEvents = ArrayDeque<FeedEvent>()
+
+    // Scratch vectors for surface walking (one simulation thread).
+    internal val pos = FloatArray(3)
+    internal val norm = FloatArray(3)
 
     /** Foragers that have brought food home and unloaded it. */
     var unloads = 0
@@ -99,9 +105,7 @@ class World(
         a.space = Space.SURFACE
         val angle = rng.nextFloat() * 2f * PI.toFloat()
         val r = params.entranceRadius + 1f
-        a.x = surface.entranceX + cos(angle) * r
-        a.y = surface.entranceY + sin(angle) * r
-        a.heading = angle
+        SurfaceWalk.place(this, a, surface.entranceX + cos(angle) * r, surface.entranceY + sin(angle) * r, angle)
         a.homeDx = a.x - surface.entranceX
         a.homeDy = a.y - surface.entranceY
         a.runLeft = 0f
@@ -116,7 +120,7 @@ class World(
 
     fun step() {
         paths.refresh()
-        surface.step(DT, params.trailDecay, params.trailDiffusion, params.homeScentDecay)
+        surface.step()
         nest.stepPheromone(DT, params.buildPheromoneLifetime)
         surfaceIndex.rebuild(ants)
         for (a in ants) behave(a)

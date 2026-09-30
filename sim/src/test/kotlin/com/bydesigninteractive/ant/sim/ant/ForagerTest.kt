@@ -51,7 +51,7 @@ class ForagerTest {
         // A trail on the +x side of the entrance only.
         var x = s.entranceX + 10f
         while (x < s.entranceX + 200f) {
-            s.trail.add(x, s.entranceY + 1f, 10f)
+            s.trail.add(x, s.entranceY + 1f, s.ground.height(x, s.entranceY + 1f), 10f)
             x += 10f
         }
         var plus = 0
@@ -77,8 +77,8 @@ class ForagerTest {
             repeat(200) {
                 val a = w.addAnt(Role.FORAGER)
                 w.exitNest(a)
-                a.heading = 0f
-                repeat(steps) { SurfaceMotion.advance(w, a, 20f) }
+                SurfaceWalk.faceCompass(a, 0f)
+                repeat(steps) { SurfaceWalk.step(w, a, 20f) }
                 sum += hypot(a.homeDx - (a.x - w.surface.entranceX), a.homeDy - (a.y - w.surface.entranceY))
             }
             return sum / 200
@@ -97,6 +97,7 @@ class ForagerTest {
         for (i in a.ants.indices) {
             assertEquals(a.ants[i].x, b.ants[i].x)
             assertEquals(a.ants[i].y, b.ants[i].y)
+            assertEquals(a.ants[i].z, b.ants[i].z)
             assertEquals(a.ants[i].state, b.ants[i].state)
         }
     }

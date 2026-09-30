@@ -23,6 +23,7 @@ import kotlin.math.min
 class SurfaceTopRenderer(private val world: World, private val chunks: ChunkTextures) : Disposable {
     private val overlays = HashMap<Int, Texture>()
     private var overlayAge = OVERLAY_EVERY
+    private val trailCells = FloatArray(OVERLAY_CELLS * OVERLAY_CELLS)
 
     fun draw(batch: SpriteBatch, cam: OrthographicCamera, ant: TextureRegion, pixel: Texture, showTrail: Boolean, dt: Float) {
         val halfW = cam.viewportWidth * cam.zoom / 2
@@ -67,20 +68,21 @@ class SurfaceTopRenderer(private val world: World, private val chunks: ChunkText
     private fun overlay(cx: Int, cy: Int, showTrail: Boolean, rebuild: Boolean): Texture? {
         val key = cx + cy * CHUNKS
         if (!rebuild) return overlays[key]
-        val trail = if (showTrail) world.surface.trail.chunk(cx, cy) else null
+        val hasTrail = showTrail &&
+            world.surface.trail.projectMax(cx * CHUNK_MM.toFloat(), cy * CHUNK_MM.toFloat(), OVERLAY_CELLS, trailCells)
         val spoil = world.surface.spoil.chunk(cx, cy)
-        if (trail == null && spoil == null) {
+        if (!hasTrail && spoil == null) {
             overlays.remove(key)?.dispose()
             return null
         }
-        val n = world.surface.trail.chunkCells
+        val n = OVERLAY_CELLS
         val p = Pixmap(n, n, Pixmap.Format.RGBA8888)
         p.blending = Pixmap.Blending.None
         for (ly in 0 until n) for (lx in 0 until n) {
             val i = ly * n + lx
             val row = n - 1 - ly
             val pellets = spoil?.get(i) ?: 0f
-            val t = trail?.get(i) ?: 0f
+            val t = if (hasTrail) trailCells[i] else 0f
             val color = when {
                 pellets > 0f -> Color.rgba8888(0.55f, 0.40f, 0.25f, min(1f, pellets / 3f))
                 t > 0f -> Color.rgba8888(0.95f, 0.85f, 0.20f, min(0.8f, t / 8f))
@@ -103,5 +105,6 @@ class SurfaceTopRenderer(private val world: World, private val chunks: ChunkText
 
     private companion object {
         const val OVERLAY_EVERY = 0.5f
+        const val OVERLAY_CELLS = CHUNK_MM / 10
     }
 }

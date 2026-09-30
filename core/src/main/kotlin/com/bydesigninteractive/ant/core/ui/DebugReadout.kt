@@ -19,7 +19,7 @@ object DebugReadout {
                 "diggers ${count(Role.DIGGER, Space.SURFACE)} out / ${count(Role.DIGGER, Space.NEST)} in",
             "nest air ${w.nest.airCells} mm2   active tiles ${w.nest.activeTileCount()}   " +
                 "stored tiles ${w.nest.modifiedTileCount()}   plan block ${w.excavation.block}",
-            "strongest trail ${f1(w.surface.trail.max())}   trail chunks ${w.surface.trail.allocatedChunks()}   " +
+            "strongest trail ${f1(w.surface.trail.max())}   trail blocks ${w.surface.trail.blockCount()}   " +
                 "feeds ${w.feedEvents.size}   unloads ${w.unloads}",
             followed?.let { "following ant ${it.id} (${it.role.name.lowercase()}, ${it.state.name.lowercase()})" } ?: "following nobody",
             help,

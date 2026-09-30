@@ -1,5 +1,7 @@
 package com.bydesigninteractive.ant.sim.world
 
+import com.bydesigninteractive.ant.sim.DT
+import com.bydesigninteractive.ant.sim.ant.AntParams
 import com.bydesigninteractive.ant.sim.util.hash
 import com.bydesigninteractive.ant.sim.world.sdf.HeightField
 import com.bydesigninteractive.ant.sim.world.sdf.SurfaceSdf
@@ -17,10 +19,14 @@ const val FIELD_CELL_MM = 10
  * The ground around the nest: chunk content generated on demand, the scalar fields ants read and
  * write, and the food sources.
  */
-class SurfaceMap(val seed: Long, rocks: Boolean = true) {
+class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean = true) {
     val generator = SurfaceGenerator(seed)
-    val trail = ChunkedField()
-    val homeScent = ChunkedField()
+
+    /** Trail pheromone on the 3D surface (section 5): narrow, decays 0.4% per second. */
+    val trail = Field3(DT, params.trailDecay, params.trailDiffusion)
+
+    /** Home-range scent laid by every walking ant; slow, lazily decayed. */
+    val homeScent = Field3(DT, params.homeScentDecay, 0f)
 
     /** Soil pellets dumped by diggers, as a count per field cell. */
     val spoil = ChunkedField()
@@ -77,11 +83,12 @@ class SurfaceMap(val seed: Long, rocks: Boolean = true) {
         }
     }
 
-    /** The closest food whose edge is within [within] of (x, y), or null. */
+    /** The closest food on the ground (not a plant) whose edge is within [within] of (x, y), or null. */
     fun nearestFood(x: Float, y: Float, within: Float): FoodSource? {
         var best: FoodSource? = null
         var bestGap = within
         for (f in foods) {
+            if (f.hasStem) continue
             val gap = hypot(f.x - x, f.y - y) - f.radius
             if (gap <= bestGap) {
                 bestGap = gap
@@ -91,9 +98,9 @@ class SurfaceMap(val seed: Long, rocks: Boolean = true) {
         return best
     }
 
-    fun step(dt: Float, trailDecay: Float, trailDiffusion: Float, scentDecay: Float) {
-        trail.step(dt, trailDecay, trailDiffusion)
-        homeScent.step(dt, scentDecay, 0f)
+    fun step() {
+        trail.step()
+        homeScent.step()
     }
 
     private companion object {

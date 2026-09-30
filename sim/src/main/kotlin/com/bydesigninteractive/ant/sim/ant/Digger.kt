@@ -6,9 +6,7 @@ import com.bydesigninteractive.ant.sim.world.DistanceMap
 import com.bydesigninteractive.ant.sim.world.Material
 import kotlin.math.abs
 import kotlin.math.atan2
-import kotlin.math.cos
 import kotlin.math.hypot
-import kotlin.math.sin
 
 /**
  * The scripted digger: when the colony needs room it walks to the frontier, digs one cell into
@@ -91,10 +89,10 @@ internal object Digger {
                 return
             }
         }
-        SurfaceMotion.wander(w, a, p.outRunMean, p.outTurnSd)
+        SurfaceWalk.wander(w, a, p.outRunMean, p.outTurnSd)
         // Keep walking away from the entrance so the pile never buries it.
-        if (cos(a.heading) * ox + sin(a.heading) * oy < 0f) a.heading = atan2(oy, ox) + w.gaussian() * 0.5f
-        SurfaceMotion.advance(w, a, p.surfaceSpeed * p.loadedFactor)
+        if (SurfaceWalk.horizontalDot(a, ox, oy) < 0f) SurfaceWalk.faceCompass(a, atan2(oy, ox) + w.gaussian() * 0.5f)
+        SurfaceWalk.step(w, a, p.surfaceSpeed * p.loadedFactor)
     }
 
     private fun goHome(w: World, a: Ant) {
@@ -113,7 +111,7 @@ internal object Digger {
             a.state = AntState.DUMP
             return
         }
-        a.heading = atan2(dy, dx)
-        SurfaceMotion.advance(w, a, p.surfaceSpeed)
+        SurfaceWalk.faceToward(a, s.entranceX, s.entranceY, s.ground.height(s.entranceX, s.entranceY))
+        SurfaceWalk.step(w, a, p.surfaceSpeed)
     }
 }
