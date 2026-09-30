@@ -92,8 +92,9 @@ class Surface3dRenderer(
     /** The chunk's ground as a flat, opaque decal; null until its texture is built. */
     private fun ground(cx: Int, cy: Int): Decal? {
         val key = cx + cy * CHUNKS
-        grounds[key]?.let { return it }
         val tex = chunks.get(cx, cy) ?: return null
+        // A cached decal is only valid while it still holds the live chunk texture.
+        grounds[key]?.let { if (it.textureRegion.texture === tex) return it }
         val d = Decal.newDecal(CHUNK_MM.toFloat(), CHUNK_MM.toFloat(), TextureRegion(tex), false)
         d.setRotation(0f, -90f, 0f)
         d.setPosition(cx * CHUNK_MM + CHUNK_MM / 2f, 0f, -(cy * CHUNK_MM + CHUNK_MM / 2f))
