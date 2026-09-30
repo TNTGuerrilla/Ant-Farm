@@ -8,7 +8,10 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.g2d.TextureRegion
 import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.utils.Disposable
-import com.bydesigninteractive.ant.sim.World
+import com.bydesigninteractive.ant.core.engine.AntPose
+import com.bydesigninteractive.ant.core.engine.FoodView
+import com.bydesigninteractive.ant.core.engine.OverlayChunk
+import com.bydesigninteractive.ant.core.engine.Published
 import com.bydesigninteractive.ant.sim.ant.Space
 import com.bydesigninteractive.ant.sim.world.CHUNKS
 import com.bydesigninteractive.ant.sim.world.CHUNK_MM
@@ -18,23 +21,41 @@ import kotlin.math.min
 
 /**
  * Draws the surface from above in millimeters, y up: ground chunks in view, an overlay of spoil
- * and (optionally) trail pheromone rebuilt twice a second, food, the entrance and surface ants.
+ * and (optionally) trail pheromone, food, the entrance and surface ants. Overlays come from
+ * [Published.overlays] (the simulation thread refreshes them around the focus twice a second); a
+ * chunk's texture is rebuilt when its published stamp changes.
  */
-class SurfaceTopRenderer(private val world: World, private val chunks: ChunkTextures) : Disposable {
+class SurfaceTopRenderer(
+    private val published: Published,
+    private val chunks: ChunkTextures,
+    private val entranceX: Float,
+    private val entranceY: Float,
+) : Disposable {
     private val overlays = HashMap<Int, Texture>()
-    private var overlayAge = OVERLAY_EVERY
-    private val trailCells = FloatArray(OVERLAY_CELLS * OVERLAY_CELLS)
+    private val stamps = HashMap<Int, Long>()
+    private var builtWithTrail = true
 
-    fun draw(batch: SpriteBatch, cam: OrthographicCamera, ants: Array<TextureRegion>, animator: AntAnimator, pixel: Texture, showTrail: Boolean, dt: Float) {
+    fun draw(
+        batch: SpriteBatch,
+        cam: OrthographicCamera,
+        poses: List<AntPose>,
+        foods: List<FoodView>,
+        regions: Array<TextureRegion>,
+        animator: AntAnimator,
+        pixel: Texture,
+        showTrail: Boolean,
+    ) {
         val halfW = cam.viewportWidth * cam.zoom / 2
         val halfH = cam.viewportHeight * cam.zoom / 2
         val cx0 = floor((cam.position.x - halfW) / CHUNK_MM).toInt().coerceAtLeast(0)
         val cx1 = floor((cam.position.x + halfW) / CHUNK_MM).toInt().coerceAtMost(CHUNKS - 1)
         val cy0 = floor((cam.position.y - halfH) / CHUNK_MM).toInt().coerceAtLeast(0)
         val cy1 = floor((cam.position.y + halfH) / CHUNK_MM).toInt().coerceAtMost(CHUNKS - 1)
-        overlayAge += dt
-        val rebuild = overlayAge >= OVERLAY_EVERY
-        if (rebuild) overlayAge = 0f
+        if (showTrail != builtWithTrail) {
+            builtWithTrail = showTrail
+            stamps.clear() // the trail toggle changes every overlay
+        }
+        dropUnpublished()
 
         for (cy in cy0..cy1) for (cx in cx0..cx1) {
             val x = (cx * CHUNK_MM).toFloat()
@@ -47,32 +68,43 @@ class SurfaceTopRenderer(private val world: World, private val chunks: ChunkText
             } else {
                 batch.draw(tex, x, y, CHUNK_MM.toFloat(), CHUNK_MM.toFloat())
             }
-            overlay(cx, cy, showTrail, rebuild)?.let { batch.draw(it, x, y, CHUNK_MM.toFloat(), CHUNK_MM.toFloat()) }
+            overlay(cx, cy, showTrail)?.let { batch.draw(it, x, y, CHUNK_MM.toFloat(), CHUNK_MM.toFloat()) }
         }
 
-        for (f in world.surface.foods) {
+        for (f in foods) {
             if (f.kind == FoodKind.HONEYDEW) batch.setColor(0.25f, 0.55f, 0.20f, 1f) else batch.setColor(0.75f, 0.45f, 0.20f, 1f)
             batch.draw(pixel, f.x - f.radius, f.y - f.radius, f.radius * 2, f.radius * 2)
         }
-        val s = world.surface
         batch.setColor(0.05f, 0.04f, 0.03f, 1f)
-        batch.draw(pixel, s.entranceX - 4f, s.entranceY - 4f, 8f, 8f)
+        batch.draw(pixel, entranceX - 4f, entranceY - 4f, 8f, 8f)
         batch.color = Color.WHITE
-        for (a in world.ants) {
-            if (a.space != Space.SURFACE) continue
-            batch.draw(ants[animator.frame(a)], a.x - 2.5f, a.y - 1.25f, 2.5f, 1.25f, 5f, 2.5f, 1f, 1f, a.heading * MathUtils.radiansToDegrees)
+        for (p in poses) {
+            if (p.space != Space.SURFACE) continue
+            batch.draw(regions[animator.frame(p)], p.x - 2.5f, p.y - 1.25f, 2.5f, 1.25f, 5f, 2.5f, 1f, 1f, p.heading * MathUtils.radiansToDegrees)
+        }
+    }
+
+    /** Frees overlay textures of chunks the simulation thread no longer publishes. */
+    private fun dropUnpublished() {
+        val it = overlays.entries.iterator()
+        while (it.hasNext()) {
+            val e = it.next()
+            if (published.overlays.containsKey(e.key)) continue
+            e.value.dispose()
+            it.remove()
+            stamps.remove(e.key)
         }
     }
 
     /** One pixel per field cell: spoil in brown, trail pheromone in yellow. Row 0 is the high-y edge. */
-    private fun overlay(cx: Int, cy: Int, showTrail: Boolean, rebuild: Boolean): Texture? {
+    private fun overlay(cx: Int, cy: Int, showTrail: Boolean): Texture? {
         val key = cx + cy * CHUNKS
-        if (!rebuild) return overlays[key]
-        // projectMax is side-effect free, so drawing never changes the simulation.
-        val hasTrail = showTrail &&
-            world.surface.trail.projectMax(cx * CHUNK_MM.toFloat(), cy * CHUNK_MM.toFloat(), OVERLAY_CELLS, trailCells)
-        val spoil = world.surface.spoil.chunk(cx, cy)
-        if (!hasTrail && spoil == null) {
+        val chunk: OverlayChunk = published.overlays[key] ?: return null
+        if (stamps[key] == chunk.stamp) return overlays[key]
+        stamps[key] = chunk.stamp
+        val trail = if (showTrail) chunk.trail else null
+        val spoil = chunk.spoil
+        if (trail == null && spoil == null) {
             overlays.remove(key)?.dispose()
             return null
         }
@@ -83,7 +115,7 @@ class SurfaceTopRenderer(private val world: World, private val chunks: ChunkText
             val i = ly * n + lx
             val row = n - 1 - ly
             val pellets = spoil?.get(i) ?: 0f
-            val t = if (hasTrail) trailCells[i] else 0f
+            val t = trail?.get(i) ?: 0f
             val color = when {
                 pellets > 0f -> Color.rgba8888(0.55f, 0.40f, 0.25f, min(1f, pellets / 3f))
                 t > 0f -> Color.rgba8888(0.95f, 0.85f, 0.20f, min(0.8f, t / 8f))
@@ -102,10 +134,10 @@ class SurfaceTopRenderer(private val world: World, private val chunks: ChunkText
     override fun dispose() {
         overlays.values.forEach { it.dispose() }
         overlays.clear()
+        stamps.clear()
     }
 
     private companion object {
-        const val OVERLAY_EVERY = 0.5f
         const val OVERLAY_CELLS = CHUNK_MM / 10
     }
 }

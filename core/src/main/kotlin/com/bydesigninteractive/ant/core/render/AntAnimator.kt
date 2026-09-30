@@ -1,7 +1,6 @@
 package com.bydesigninteractive.ant.core.render
 
 import com.bydesigninteractive.ant.core.engine.AntPose
-import com.bydesigninteractive.ant.sim.ant.Ant
 import com.bydesigninteractive.ant.sim.ant.Space
 import kotlin.math.floor
 import kotlin.math.sqrt
@@ -43,27 +42,6 @@ class AntAnimator {
     fun frame(p: AntPose): Int {
         if (p.speed == 0f) return 1
         return CYCLE[floor(phase(p.id) * 4f).toInt() and 3]
-    }
-
-    // The old API, still used by the renderers until it is removed.
-
-    /** Advances every ant's phase by `speed * simSeconds / STRIDE_MM` (one unit is one stride). */
-    fun advance(ants: List<Ant>, simSeconds: Float) {
-        for (a in ants) {
-            grow(a.id)
-            phases[a.id] += a.speed * simSeconds / STRIDE_MM
-            phases[a.id] -= floor(phases[a.id])
-        }
-    }
-
-    /** The gait phase of [a] in strides; 0 for an ant that has not been advanced. */
-    fun phase(a: Ant): Float = phase(a.id)
-
-    /** Frame 1 (neutral) while standing; otherwise the cycle 0, 1, 2, 1 by quarter strides. */
-    fun frame(a: Ant): Int {
-        if (a.speed == 0f) return 1
-        val q = floor(phase(a) * 4f).toInt() and 3
-        return CYCLE[q]
     }
 
     private fun grow(id: Int) {

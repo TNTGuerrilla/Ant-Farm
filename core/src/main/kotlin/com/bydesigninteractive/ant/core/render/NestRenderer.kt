@@ -8,35 +8,45 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.g2d.TextureRegion
 import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.utils.Disposable
-import com.bydesigninteractive.ant.sim.World
+import com.bydesigninteractive.ant.core.engine.AntPose
+import com.bydesigninteractive.ant.core.engine.Published
 import com.bydesigninteractive.ant.sim.ant.Space
 import com.bydesigninteractive.ant.sim.util.unit
 import com.bydesigninteractive.ant.sim.world.Material
+import com.bydesigninteractive.ant.sim.world.NestGenerator
 import com.bydesigninteractive.ant.sim.world.TILE
 import kotlin.math.floor
 
 /**
  * Draws the nest slice in world coordinates of millimeters with y = -depth. Only tiles in view
  * get textures; a tile's texture is rebuilt when its version changes, and at most a few new
- * tiles are built per frame.
+ * tiles are built per frame. Changed tiles come from [Published.tiles]; untouched ones from the
+ * render thread's own [NestGenerator], so the live nest is never read.
  */
-class NestRenderer(private val world: World) : Disposable {
+class NestRenderer(
+    private val seed: Long,
+    private val width: Int,
+    private val depth: Int,
+    private val published: Published,
+) : Disposable {
+    private val generator = NestGenerator(seed, width, depth)
+    private val tilesX = (width + TILE - 1) / TILE
+    private val tilesY = (depth + TILE - 1) / TILE
     private val textures = HashMap<Int, Texture>()
     private val versions = HashMap<Int, Long>()
     private var built = 0
 
-    fun draw(batch: SpriteBatch, cam: OrthographicCamera, ants: Array<TextureRegion>, animator: AntAnimator, pixel: Texture) {
+    fun draw(batch: SpriteBatch, cam: OrthographicCamera, poses: List<AntPose>, regions: Array<TextureRegion>, animator: AntAnimator, pixel: Texture) {
         built = 0
-        val g = world.nest
         val halfW = cam.viewportWidth * cam.zoom / 2
         val halfH = cam.viewportHeight * cam.zoom / 2
         val tx0 = floor((cam.position.x - halfW) / TILE).toInt().coerceAtLeast(0)
-        val tx1 = floor((cam.position.x + halfW) / TILE).toInt().coerceAtMost(g.tilesX - 1)
+        val tx1 = floor((cam.position.x + halfW) / TILE).toInt().coerceAtMost(tilesX - 1)
         val ty0 = floor(-(cam.position.y + halfH) / TILE).toInt().coerceAtLeast(0)
-        val ty1 = floor(-(cam.position.y - halfH) / TILE).toInt().coerceAtMost(g.tilesY - 1)
+        val ty1 = floor(-(cam.position.y - halfH) / TILE).toInt().coerceAtMost(tilesY - 1)
 
         batch.setColor(0.30f, 0.45f, 0.20f, 1f) // the ground surface above the slice
-        batch.draw(pixel, 0f, 0f, g.width.toFloat(), 6f)
+        batch.draw(pixel, 0f, 0f, width.toFloat(), 6f)
         for (ty in ty0..ty1) for (tx in tx0..tx1) {
             val x = (tx * TILE).toFloat()
             val y = -((ty + 1) * TILE).toFloat()
@@ -50,20 +60,21 @@ class NestRenderer(private val world: World) : Disposable {
             }
         }
         batch.color = Color.WHITE
-        for (a in world.ants) {
-            if (a.space != Space.NEST) continue
-            batch.draw(ants[animator.frame(a)], a.x - 2.5f, -a.y - 1.25f, 2.5f, 1.25f, 5f, 2.5f, 1f, 1f, -a.heading * MathUtils.radiansToDegrees)
+        for (p in poses) {
+            if (p.space != Space.NEST) continue
+            batch.draw(regions[animator.frame(p)], p.x - 2.5f, -p.y - 1.25f, 2.5f, 1.25f, 5f, 2.5f, 1f, 1f, -p.heading * MathUtils.radiansToDegrees)
         }
     }
 
     private fun tile(tx: Int, ty: Int): Texture? {
-        val key = tx + ty * world.nest.tilesX
-        val version = world.nest.tileVersion(tx, ty)
+        val key = tx + ty * tilesX
+        val copy = published.tiles[key]
+        val version = copy?.version ?: 0L
         val existing = textures[key]
         if (existing != null && versions[key] == version) return existing
         if (existing == null && built >= BUILDS_PER_FRAME) return null
         built++
-        val p = pixmap(tx, ty)
+        val p = pixmap(tx, ty, copy?.cells)
         val tex = existing?.also { it.draw(p, 0, 0) } ?: Texture(p).also {
             it.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest)
             textures[key] = it
@@ -73,15 +84,22 @@ class NestRenderer(private val world: World) : Disposable {
         return tex
     }
 
-    /** Pixel row 0 is the tile's top edge (the smallest depth). */
-    private fun pixmap(tx: Int, ty: Int): Pixmap {
+    /**
+     * Pixel row 0 is the tile's top edge (the smallest depth). [cells] holds a published tile's
+     * material ordinals; without it the tile is untouched and comes from the generator.
+     */
+    private fun pixmap(tx: Int, ty: Int, cells: ByteArray?): Pixmap {
         val p = Pixmap(TILE, TILE, Pixmap.Format.RGBA8888)
-        val g = world.nest
         for (cy in 0 until TILE) for (cx in 0 until TILE) {
             val x = tx * TILE + cx
             val y = ty * TILE + cy
-            val v = 0.88f + unit(world.seed, x, y).toFloat() * 0.24f
-            val c = when (g.material(x, y)) {
+            val v = 0.88f + unit(seed, x, y).toFloat() * 0.24f
+            val m = when {
+                cells != null -> Material.entries[cells[cy * TILE + cx].toInt()]
+                x < width && y < depth -> generator.material(x, y)
+                else -> Material.STONE
+            }
+            val c = when (m) {
                 Material.AIR -> AIR
                 Material.SOIL -> SOIL
                 Material.CLAY -> CLAY

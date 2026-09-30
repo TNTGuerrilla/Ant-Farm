@@ -8,16 +8,18 @@ import com.bydesigninteractive.ant.sim.util.unit
 import com.bydesigninteractive.ant.sim.world.CHUNKS
 import com.bydesigninteractive.ant.sim.world.CHUNK_MM
 import com.bydesigninteractive.ant.sim.world.ChunkContent
-import com.bydesigninteractive.ant.sim.world.SurfaceMap
+import com.bydesigninteractive.ant.sim.world.SurfaceGenerator
 import kotlin.math.abs
 import kotlin.math.floor
 
 /**
  * Ground textures for surface chunks, built on demand (a few per frame) and freed when the
  * camera moves away. Pixel row 0 is the chunk's high-y edge, so the texture draws upright in
- * both the top-down view and the 2.5D view.
+ * both the top-down view and the 2.5D view. Chunk content comes from its own [SurfaceGenerator],
+ * a pure function of the seed, so the render thread never touches the simulation's surface.
  */
-class ChunkTextures(private val surface: SurfaceMap) : Disposable {
+class ChunkTextures(private val seed: Long) : Disposable {
+    private val generator = SurfaceGenerator(seed)
     private val textures = HashMap<Int, Texture>()
     private var builtThisFrame = 0
 
@@ -31,7 +33,7 @@ class ChunkTextures(private val surface: SurfaceMap) : Disposable {
         textures[key]?.let { return it }
         if (builtThisFrame >= BUILDS_PER_FRAME) return null
         builtThisFrame++
-        return build(surface.chunk(cx, cy)).also { textures[key] = it }
+        return build(generator.chunk(cx, cy)).also { textures[key] = it }
     }
 
     /** Frees textures of chunks more than [keep] chunks away from (cx, cy). */
@@ -55,10 +57,10 @@ class ChunkTextures(private val surface: SurfaceMap) : Disposable {
         val y0 = c.cy * CHUNK_MM
         for (row in 0 until PX) for (col in 0 until PX) {
             val gy = PX - 1 - row
-            val grain = unit(surface.seed, c.cx * PX + col, c.cy * PX + gy).toFloat()
+            val grain = unit(seed, c.cx * PX + col, c.cy * PX + gy).toFloat()
             val wx = x0 + (col + 0.5f) * mm
             val wy = y0 + (gy + 0.5f) * mm
-            val patch = unit(surface.seed xor LITTER_SALT, floor(wx / 40f).toInt(), floor(wy / 40f).toInt()).toFloat()
+            val patch = unit(seed xor LITTER_SALT, floor(wx / 40f).toInt(), floor(wy / 40f).toInt()).toFloat()
             val v = 0.85f + grain * 0.3f
             val color = if (patch < c.litter * 0.4f) {
                 Color.rgba8888(0.36f * v, 0.27f * v, 0.13f * v, 1f)

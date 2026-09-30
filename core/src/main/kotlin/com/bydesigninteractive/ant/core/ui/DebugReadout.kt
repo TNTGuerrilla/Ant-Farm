@@ -1,33 +1,31 @@
 package com.bydesigninteractive.ant.core.ui
 
+import com.bydesigninteractive.ant.core.engine.AntPose
+import com.bydesigninteractive.ant.core.engine.HudNumbers
 import com.bydesigninteractive.ant.core.stub.FrameStats
-import com.bydesigninteractive.ant.sim.World
-import com.bydesigninteractive.ant.sim.ant.Ant
-import com.bydesigninteractive.ant.sim.ant.Role
-import com.bydesigninteractive.ant.sim.ant.Space
+import java.util.Locale
 
 /**
- * The debug overlay text: what the world is doing and how fast it runs. It reads the world only
- * through side-effect-free calls (`Field3.max` and `blockCount`), so it never changes a run.
+ * The debug overlay text: what the world is doing and how fast it runs. It reads only the
+ * [HudNumbers] the simulation thread publishes, never the live world.
  */
 object DebugReadout {
-    fun lines(w: World, view: String, speed: String, fps: Int, frames: FrameStats, followed: Ant?, help: String): List<String> {
-        fun count(role: Role, space: Space) = w.ants.count { it.role == role && it.space == space }
-        val minutes = (w.seconds / 60).toInt()
-        val secs = (w.seconds % 60).toInt()
+    fun lines(h: HudNumbers, view: String, speed: String, fps: Int, frames: FrameStats, followed: AntPose?, help: String): List<String> {
+        val minutes = (h.seconds / 60).toInt()
+        val secs = (h.seconds % 60).toInt()
         return listOf(
-            "Ant Farm M1   view: $view   speed: $speed   sim time ${minutes}m ${secs}s   tick ${w.tick}",
-            "fps $fps   frame ms p50 ${f1(frames.percentile(0.5f))} p99 ${f1(frames.percentile(0.99f))} max ${f1(frames.max())}",
-            "foragers ${count(Role.FORAGER, Space.SURFACE)} out / ${count(Role.FORAGER, Space.NEST)} in   " +
-                "diggers ${count(Role.DIGGER, Space.SURFACE)} out / ${count(Role.DIGGER, Space.NEST)} in",
-            "nest air ${w.nest.airCells} mm2   active tiles ${w.nest.activeTileCount()}   " +
-                "stored tiles ${w.nest.modifiedTileCount()}   plan block ${w.excavation.block}",
-            "strongest trail ${f1(w.surface.trail.max())}   trail blocks ${w.surface.trail.blockCount()}   " +
-                "feeds ${w.feedEvents.size}   unloads ${w.unloads}",
+            "Ant Farm   view: $view   speed: $speed   sim time ${minutes}m ${secs}s   tick ${h.tick}",
+            "fps $fps   frame ms p50 ${f1(frames.percentile(0.5f))} p99 ${f1(frames.percentile(0.99f))} max ${f1(frames.max())}   " +
+                "ticks/s ${f1(h.ticksPerSecond)}   ms/tick ${f2(h.msPerTickAvg)} max ${f2(h.msPerTickMax)}   resets ${h.resets}",
+            "foragers ${h.foragersOut} out / ${h.foragersIn} in   diggers ${h.diggersOut} out / ${h.diggersIn} in",
+            "nest air ${h.airCells} mm2   active tiles ${h.activeTiles}   stored tiles ${h.storedTiles}   plan block ${h.planBlock}",
+            "strongest trail ${f1(h.strongestTrail)}   trail blocks ${h.trailBlocks}   feeds ${h.feeds}   unloads ${h.unloads}",
             followed?.let { "following ant ${it.id} (${it.role.name.lowercase()}, ${it.state.name.lowercase()})" } ?: "following nobody",
             help,
         )
     }
 
-    private fun f1(v: Float) = "%.1f".format(v)
+    private fun f1(v: Float) = "%.1f".format(Locale.ROOT, v)
+
+    private fun f2(v: Float) = "%.2f".format(Locale.ROOT, v)
 }

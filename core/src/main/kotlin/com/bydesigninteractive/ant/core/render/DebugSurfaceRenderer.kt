@@ -16,11 +16,14 @@ import com.badlogic.gdx.graphics.g3d.utils.ModelBuilder
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.Disposable
 import com.bydesigninteractive.ant.core.camera.ChaseCamera3
-import com.bydesigninteractive.ant.sim.World
-import com.bydesigninteractive.ant.sim.ant.Ant
+import com.bydesigninteractive.ant.core.engine.AntPose
+import com.bydesigninteractive.ant.core.engine.FoodView
+import com.bydesigninteractive.ant.core.engine.Published
 import com.bydesigninteractive.ant.sim.ant.Space
 import com.bydesigninteractive.ant.sim.world.CHUNKS
 import com.bydesigninteractive.ant.sim.world.CHUNK_MM
+import com.bydesigninteractive.ant.sim.world.ChunkedField
+import com.bydesigninteractive.ant.sim.world.sdf.HeightField
 import kotlin.math.abs
 import kotlin.math.floor
 
@@ -31,8 +34,12 @@ import kotlin.math.floor
  *
  * Ants can appear to sink into rocks here: the simulation surface is the lumpy, blended rock,
  * while this view draws smooth spheres. M1b-2 builds meshes from the same SDF, which fixes it.
+ *
+ * It reads only published state: rocks from [Published.rocks] and [Published.placed], foods and
+ * ants from the caller. The ground is its own [HeightField] from the seed (base relief only; the
+ * debug ground ignores the spoil mound), since the simulation's height field is not thread-safe.
  */
-class DebugSurfaceRenderer(private val world: World) : Disposable {
+class DebugSurfaceRenderer(seed: Long, private val published: Published) : Disposable {
     val camera = PerspectiveCamera(FOV, 1f, 1f).apply {
         near = 2f
         far = VIEW_MM * 2f
@@ -47,9 +54,11 @@ class DebugSurfaceRenderer(private val world: World) : Disposable {
     private val sphere = builder.createSphere(2f, 2f, 2f, 16, 12, Material(), attributes)
     private val cylinder = builder.createCylinder(2f, 1f, 2f, 10, Material(), attributes)
     private val box = builder.createBox(1f, 1f, 1f, Material(), attributes)
-    private val pools = HashMap<Model, ArrayList<ModelInstance>>()
-    private val used = HashMap<Model, Int>()
-    private var ground: Model? = null
+    private val ground = HeightField(seed, ChunkedField())
+    private val models = arrayOf(sphere, cylinder, box)
+    private val pools = Array(models.size) { ArrayList<ModelInstance>() }
+    private val used = IntArray(models.size)
+    private var groundModel: Model? = null
     private var groundInstance: ModelInstance? = null
     private var groundX = Float.NaN
     private var groundY = Float.NaN
@@ -64,7 +73,7 @@ class DebugSurfaceRenderer(private val world: World) : Disposable {
         camera.viewportHeight = h.toFloat()
     }
 
-    fun draw(chase: ChaseCamera3) {
+    fun draw(chase: ChaseCamera3, poses: List<AntPose>, foods: List<FoodView>) {
         camera.position.set(chase.eyeX, chase.eyeZ, -chase.eyeY)
         camera.up.set(chase.upX, chase.upZ, -chase.upY)
         camera.lookAt(chase.targetX, chase.targetZ, -chase.targetY)
@@ -72,34 +81,34 @@ class DebugSurfaceRenderer(private val world: World) : Disposable {
         val fx = chase.targetX
         val fy = chase.targetY
         if (groundX.isNaN() || abs(fx - groundX) > REBUILD_MM || abs(fy - groundY) > REBUILD_MM) rebuildGround(fx, fy)
-        used.clear()
+        used.fill(0)
         batch.begin(camera)
         groundInstance?.let { batch.render(it, environment) }
-        val sdf = world.surface.sdf
         val ccx = floor(fx / CHUNK_MM).toInt()
         val ccy = floor(fy / CHUNK_MM).toInt()
         for (cy in ccy - RING..ccy + RING) for (cx in ccx - RING..ccx + RING) {
             if (cx < 0 || cy < 0 || cx >= CHUNKS || cy >= CHUNKS) continue
-            for (b in sdf.ownBlobs(cx, cy)) blob(b.cx, b.cy, b.cz, b.rx, b.ry, b.rz, ROCK)
+            val rocks = published.rocks[cx + cy * CHUNKS] ?: continue
+            for (b in rocks) blob(b.cx, b.cy, b.cz, b.rx, b.ry, b.rz, ROCK)
         }
-        for (b in sdf.placed) blob(b.cx, b.cy, b.cz, b.rx, b.ry, b.rz, ROCK)
-        for (f in world.surface.foods) {
-            f.body?.let { blob(it.cx, it.cy, it.cz, it.rx, it.ry, it.rz, FOOD) }
-            f.stem?.let {
-                val i = next(cylinder, STEM)
-                i.transform.setToTranslationAndScaling(it.x, (it.z0 + it.z1) / 2f, -it.y, it.radius, it.z1 - it.z0, it.radius)
+        for (b in published.placed) blob(b.cx, b.cy, b.cz, b.rx, b.ry, b.rz, ROCK)
+        for (f in foods) {
+            if (f.bodyRadius > 0f) blob(f.x, f.y, f.z, f.bodyRadius, f.bodyRadius, f.bodyRadius, FOOD)
+            if (f.stemRadius > 0f) {
+                val i = next(CYLINDER, STEM)
+                i.transform.setToTranslationAndScaling(f.x, (f.stemBase + f.stemTop) / 2f, -f.y, f.stemRadius, f.stemTop - f.stemBase, f.stemRadius)
                 batch.render(i, environment)
             }
         }
-        for (a in world.ants) {
+        for (a in poses) {
             if (a.space != Space.SURFACE) continue
             if (abs(a.x - fx) > VIEW_MM || abs(a.y - fy) > VIEW_MM) continue
             xAxis.set(a.fx, a.fz, -a.fy)
             yAxis.set(a.nx, a.nz, -a.ny)
             zAxis.set(xAxis).crs(yAxis)
-            antPart(box, ANT, a, -1.6f, 0.8f, 2.4f, 1.6f, 2.2f)
-            antPart(box, ANT, a, 0f, 0.6f, 1.8f, 1.2f, 1.2f)
-            antPart(sphere, HEAD, a, 1.8f, 0.8f, 0.8f, 0.8f, 0.8f)
+            antPart(BOX, ANT, a, -1.6f, 0.8f, 2.4f, 1.6f, 2.2f)
+            antPart(BOX, ANT, a, 0f, 0.6f, 1.8f, 1.2f, 1.2f)
+            antPart(SPHERE, HEAD, a, 1.8f, 0.8f, 0.8f, 0.8f, 0.8f)
         }
         batch.end()
     }
@@ -109,7 +118,7 @@ class DebugSurfaceRenderer(private val world: World) : Disposable {
      * of the ant position, lifted [lift] mm along the normal, scaled by the given sizes (the
      * sphere model has radius 1, so pass the radius for it).
      */
-    private fun antPart(model: Model, color: Color, a: Ant, along: Float, lift: Float, sx: Float, sy: Float, sz: Float) {
+    private fun antPart(model: Int, color: ColorAttribute, a: AntPose, along: Float, lift: Float, sx: Float, sy: Float, sz: Float) {
         val i = next(model, color)
         origin.set(
             a.x + a.fx * along + a.nx * lift,
@@ -121,25 +130,26 @@ class DebugSurfaceRenderer(private val world: World) : Disposable {
         batch.render(i, environment)
     }
 
-    private fun blob(x: Float, y: Float, z: Float, rx: Float, ry: Float, rz: Float, color: Color) {
-        val i = next(sphere, color)
+    private fun blob(x: Float, y: Float, z: Float, rx: Float, ry: Float, rz: Float, color: ColorAttribute) {
+        val i = next(SPHERE, color)
         i.transform.setToTranslationAndScaling(x, z, -y, rx, rz, ry)
         batch.render(i, environment)
     }
 
-    private fun next(model: Model, color: Color): ModelInstance {
-        val pool = pools.getOrPut(model) { ArrayList() }
-        val n = used[model] ?: 0
-        val instance = if (n < pool.size) pool[n] else ModelInstance(model).also { pool += it }
+    /** The next pooled instance of model [model] (an index into [models]), set to [color]. */
+    private fun next(model: Int, color: ColorAttribute): ModelInstance {
+        val pool = pools[model]
+        val n = used[model]
+        val instance = if (n < pool.size) pool[n] else ModelInstance(models[model]).also { pool += it }
         used[model] = n + 1
-        instance.materials[0].set(ColorAttribute.createDiffuse(color))
+        instance.materials[0].set(color)
         return instance
     }
 
     /** A grid of the ground heights, 2 m across at 20 mm spacing, centered on (cx, cy). */
     private fun rebuildGround(cx: Float, cy: Float) {
-        ground?.dispose()
-        val g = world.surface.ground
+        groundModel?.dispose()
+        val g = ground
         builder.begin()
         val part = builder.part("ground", GL20.GL_TRIANGLES, attributes, Material(ColorAttribute.createDiffuse(GROUND)))
         val n = GROUND_CELLS + 1
@@ -164,14 +174,14 @@ class DebugSurfaceRenderer(private val world: World) : Disposable {
             part.triangle(i00, i11, i01)
         }
         val model = builder.end()
-        ground = model
+        groundModel = model
         groundInstance = ModelInstance(model)
         groundX = cx
         groundY = cy
     }
 
     override fun dispose() {
-        ground?.dispose()
+        groundModel?.dispose()
         sphere.dispose()
         cylinder.dispose()
         box.dispose()
@@ -185,11 +195,16 @@ class DebugSurfaceRenderer(private val world: World) : Disposable {
         const val GROUND_CELLS = 100
         const val SPACING = 20f
         const val REBUILD_MM = 400f
+        const val SPHERE = 0
+        const val CYLINDER = 1
+        const val BOX = 2
         val GROUND = Color(0.40f, 0.30f, 0.20f, 1f)
-        val ROCK = Color(0.52f, 0.51f, 0.48f, 1f)
-        val FOOD = Color(0.80f, 0.55f, 0.20f, 1f)
-        val STEM = Color(0.30f, 0.50f, 0.18f, 1f)
-        val ANT = Color(0.08f, 0.06f, 0.05f, 1f)
-        val HEAD = Color(0.25f, 0.12f, 0.08f, 1f)
+
+        // One shared diffuse attribute per color, assigned to pooled instances in next().
+        val ROCK: ColorAttribute = ColorAttribute.createDiffuse(Color(0.52f, 0.51f, 0.48f, 1f))
+        val FOOD: ColorAttribute = ColorAttribute.createDiffuse(Color(0.80f, 0.55f, 0.20f, 1f))
+        val STEM: ColorAttribute = ColorAttribute.createDiffuse(Color(0.30f, 0.50f, 0.18f, 1f))
+        val ANT: ColorAttribute = ColorAttribute.createDiffuse(Color(0.08f, 0.06f, 0.05f, 1f))
+        val HEAD: ColorAttribute = ColorAttribute.createDiffuse(Color(0.25f, 0.12f, 0.08f, 1f))
     }
 }
