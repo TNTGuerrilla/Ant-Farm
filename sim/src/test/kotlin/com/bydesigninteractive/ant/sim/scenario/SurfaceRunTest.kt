@@ -78,4 +78,24 @@ class SurfaceRunTest {
         println("BENCHMARK 1000 surface ants: %.2f ms per tick".format(java.util.Locale.ROOT, msPerTick))
         assertTrue(msPerTick < 20.0, "$msPerTick ms per tick")
     }
+
+    /** The starter colony for 30 simulated minutes, so trails really exist; reports the cost. */
+    @Test
+    fun benchmarkTheStarterColonyWithTrails() {
+        val w = Scenarios.starter(7)
+        repeat(20 * 60 * 25) { w.step() } // 25 minutes to build trails and scent
+        val ticks = 20 * 60 * 5
+        val start = System.nanoTime()
+        repeat(ticks) { w.step() }
+        val msPerTick = (System.nanoTime() - start) / 1e6 / ticks
+        val rt = Runtime.getRuntime()
+        System.gc()
+        val heapMb = (rt.totalMemory() - rt.freeMemory()) / 1_048_576.0
+        println(
+            "BENCHMARK starter with trails: %.2f ms per tick, trail blocks %d, scent blocks %d, heap %.0f MB, feeds %d".format(
+                java.util.Locale.ROOT, msPerTick, w.surface.trail.blockCount(), w.surface.homeScent.blockCount(), heapMb, w.feedEvents.size,
+            ),
+        )
+        assertTrue(msPerTick < 20.0, "$msPerTick ms per tick")
+    }
 }
