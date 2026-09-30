@@ -48,8 +48,52 @@ class SurfaceSdfTest {
         val cy = (m.entranceY / 500f).toInt()
         for (y in cy - 1..cy + 1) for (x in cx - 1..cx + 1) {
             for (b in m.sdf.ownBlobs(x, y)) {
-                assertTrue(hypot(b.cx - m.entranceX, b.cy - m.entranceY) - max(b.rx, b.ry) >= 30f)
+                assertTrue(hypot(b.cx - m.entranceX, b.cy - m.entranceY) - b.reach >= 30f)
             }
+        }
+    }
+
+    @Test
+    fun noRockCoversFood() {
+        val m = SurfaceMap(3)
+        var stone: com.bydesigninteractive.ant.sim.world.Stone? = null
+        search@ for (cy in 0 until CHUNKS) for (cx in 0 until CHUNKS) {
+            val r = m.chunk(cx, cy).rocks.firstOrNull()
+            if (r != null) {
+                stone = r
+                break@search
+            }
+        }
+        val s = assertNotNull(stone)
+        val g = m.ground.height(s.x, s.y)
+        val food = FoodSource(0, FoodKind.PREY, s.x, s.y, 6f, 1f)
+        m.foods += food
+        assertTrue(m.sdf.distance(food.x, food.y, g + 1f) > 0f)
+    }
+
+    @Test
+    fun projectionLandsOnALumpyRock() {
+        val m = SurfaceMap(3, rocks = false)
+        val g = m.ground.height(4300f, 4000f)
+        val b = Blob(4300f, 4000f, g + 10f, 30f, 28f, 20f, lump = 0.15f, phase = 1.3f)
+        m.sdf.placed += b
+        val dirs = listOf(
+            floatArrayOf(1f, 0f, 0f), floatArrayOf(0f, 1f, 0f), floatArrayOf(-1f, 0f, 0.2f), floatArrayOf(0f, -1f, 0.3f),
+            floatArrayOf(1f, 1f, 1f), floatArrayOf(-1f, 1f, 0.6f), floatArrayOf(0.3f, -1f, 1f), floatArrayOf(0f, 0f, 1f),
+        )
+        for (d in dirs) {
+            val len = Math.sqrt((d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).toDouble()).toFloat()
+            val p = floatArrayOf(b.cx + d[0] / len * 40f, b.cy + d[1] / len * 40f, b.cz + d[2] / len * 40f)
+            // walk inward along the direction to 3 mm outside the surface
+            var step = 0
+            while (m.sdf.distance(p[0], p[1], p[2]) > 3f && step++ < 200) {
+                p[0] -= d[0] / len * 0.5f
+                p[1] -= d[1] / len * 0.5f
+                p[2] -= d[2] / len * 0.5f
+            }
+            m.sdf.project(p)
+            val dist = m.sdf.distance(p[0], p[1], p[2])
+            assertTrue(abs(dist) < 0.5f, "residual $dist from direction ${d.toList()}")
         }
     }
 

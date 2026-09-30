@@ -9,7 +9,6 @@ import com.bydesigninteractive.ant.sim.world.SurfaceMap
 import java.util.Random
 import kotlin.math.floor
 import kotlin.math.hypot
-import kotlin.math.max
 import kotlin.math.sqrt
 
 /**
@@ -21,10 +20,14 @@ import kotlin.math.sqrt
 class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true) {
     /** Objects placed at run time (tests now; debris in a later milestone). */
     val placed = ArrayList<Blob>()
-    private val own = HashMap<Int, List<Blob>>()
-    private val near = HashMap<Int, List<Blob>>()
+    private val own = arrayOfNulls<List<Blob>>(CHUNKS * CHUNKS)
+    private val near = arrayOfNulls<List<Blob>>(CHUNKS * CHUNKS)
     private val g = FloatArray(3)
 
+    /**
+     * The signed distance at (x, y, z). It is a bound joined by the smooth minimum, exact near the
+     * surface, and it ignores shapes beyond [MARGIN].
+     */
     fun distance(x: Float, y: Float, z: Float): Float {
         var d = map.ground.distance(x, y, z)
         for (b in blobsNear(x, y)) if (b.near(x, y, z, MARGIN)) d = smin(d, b.distance(x, y, z), BLEND)
@@ -55,7 +58,10 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
         }
     }
 
-    /** Moves the point (p[0], p[1], p[2]) onto the surface with [ITERATIONS] Newton steps. */
+    /**
+     * Moves the point (p[0], p[1], p[2]) onto the surface with [ITERATIONS] Newton steps. It reuses
+     * a scratch array, so it is for one simulation thread.
+     */
     fun project(p: FloatArray) {
         repeat(ITERATIONS) {
             val d = distance(p[0], p[1], p[2])
@@ -77,12 +83,12 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
 
     /** The pebbles and rocks generated in one chunk (empty for a world without rocks). */
     fun ownBlobs(cx: Int, cy: Int): List<Blob> =
-        own.getOrPut(cx + cy * CHUNKS) { if (rocks) generate(cx, cy) else emptyList() }
+        own[cx + cy * CHUNKS] ?: (if (rocks) generate(cx, cy) else emptyList()).also { own[cx + cy * CHUNKS] = it }
 
     private fun blobsNear(x: Float, y: Float): List<Blob> {
         val cx = floor(x / CHUNK_MM).toInt().coerceIn(0, CHUNKS - 1)
         val cy = floor(y / CHUNK_MM).toInt().coerceIn(0, CHUNKS - 1)
-        return near.getOrPut(cx + cy * CHUNKS) { gather(cx, cy) }
+        return near[cx + cy * CHUNKS] ?: gather(cx, cy).also { near[cx + cy * CHUNKS] = it }
     }
 
     /** This chunk's blobs plus neighbors' blobs whose bounds reach into it. */
@@ -110,15 +116,17 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
         return out
     }
 
-    /** Shapes a partly buried lumpy blob from a 2D stone; all draws happen before any skip. */
+    /** Shapes a partly buried lumpy blob from a 2D stone; all draws happen before any skip. Skips blobs near the entrance or any food. */
     private fun addBlob(out: ArrayList<Blob>, r: Random, s: Stone, lump: Float) {
         val rx = s.radius * (0.8f + 0.4f * r.nextFloat())
         val ry = s.radius * (0.8f + 0.4f * r.nextFloat())
         val rz = s.radius * (0.5f + 0.3f * r.nextFloat())
         val phase = r.nextFloat() * 6.283f
-        if (hypot(s.x - map.entranceX, s.y - map.entranceY) - max(rx, ry) < ENTRANCE_CLEARANCE) return
         val cz = map.ground.base(s.x, s.y) + rz * BURIED
-        out += Blob(s.x, s.y, cz, rx, ry, rz, lump, phase)
+        val blob = Blob(s.x, s.y, cz, rx, ry, rz, lump, phase)
+        if (hypot(s.x - map.entranceX, s.y - map.entranceY) - blob.reach < ENTRANCE_CLEARANCE) return
+        for (f in map.foods) if (hypot(f.x - s.x, f.y - s.y) - blob.reach < FOOD_CLEARANCE) return
+        out += blob
     }
 
     private companion object {
@@ -127,6 +135,7 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
         const val E = 0.25f
         const val ITERATIONS = 2
         const val ENTRANCE_CLEARANCE = 30f
+        const val FOOD_CLEARANCE = 20f
         const val BURIED = 0.3f
         const val PEBBLE_LUMP = 0.12f
         const val ROCK_LUMP = 0.15f
