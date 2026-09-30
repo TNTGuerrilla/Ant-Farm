@@ -186,7 +186,8 @@ This needs an early test on the TV (milestone M0) to confirm the firmware passes
 | M0 | TV stub dream: logs key presses; draws 1,000 moving sprites; times a 20 MB background write | Remote input works; the render and save budgets hold |
 | M1 | Desktop: world grid, soil, fields, scripted ants (no brains) that dig, forage and lay trails; renderer with auto-fit camera | The world model and rendering are sound; reproduces the Gruter 2012 foraging switch with scripted rules |
 | M1b-1 | Surface simulation: a signed-distance-function heightfield ground with pebbles and rocks, 3D pheromone fields (10 mm trail voxels, 25 mm home-scent voxels), surface walking keeping ants within 0.5 mm, scripted surface foraging with stem climbing | The 3D surface works; Gruter test passes on the surface after recalibration |
-| M1b-2 | Low-poly look (RuneScape style): low-poly models for ants, rocks, grass and plants; TV test | The 3D surface runs at 60 fps on the QM6K; ants collide with and crawl over terrain |
+| M1b-2a | The engine: a simulation thread at a fixed 20 ticks/s (Minecraft model), snapshots and interpolated rendering, a render-safe boundary, a 4 mm 16-bit height grid; the TV dream runs the app | Done 2026-09-30. The TV holds 20 ticks/s at 1x with about 13 ms per tick, and 60 fps in the nest and top-down views (notes: `docs/superpowers/notes/2026-09-30-m1b2a-tv-session.md`) |
+| M1b-2b | Low-poly look (RuneScape style): low-poly models for ants, rocks, grass and plants; the final TV test | The 3D surface runs at 60 fps on the QM6K; ants collide with and crawl over terrain |
 | M2 | Brains replace the scripts; plasticity; fast and slow memory | Learning targets from the reference (75% after 1 visit, and so on) |
 | M3 | Colony life cycle, brood, castes, seasons, the two clocks | Founding to 75 workers and the recruitment switch |
 | M4 | Gene pool, alates, restart sequence; headless offline evolution | Later colony generations measurably improve |
