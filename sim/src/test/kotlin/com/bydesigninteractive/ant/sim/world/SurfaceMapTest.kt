@@ -52,7 +52,7 @@ class SurfaceMapTest {
     @Test
     fun nearestFoodHonorsTheRange() {
         val m = SurfaceMap(9)
-        m.foods += FoodSource(0, FoodKind.HONEYDEW, m.entranceX + 100f, m.entranceY, 15f, 1f)
+        m.addFood(FoodSource(0, FoodKind.HONEYDEW, m.entranceX + 100f, m.entranceY, 15f, 1f))
         assertNotNull(m.nearestFood(m.entranceX + 100f + 15f + 20f, m.entranceY, 25f))
         assertNull(m.nearestFood(m.entranceX + 100f + 15f + 30f, m.entranceY, 25f))
     }

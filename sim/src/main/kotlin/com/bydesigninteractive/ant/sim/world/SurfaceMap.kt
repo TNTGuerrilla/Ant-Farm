@@ -39,7 +39,19 @@ class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean
 
     /** The ground height field (reference section 13). */
     val ground = HeightField(seed, spoil)
-    val foods = ArrayList<FoodSource>()
+    private val foodList = ArrayList<FoodSource>()
+
+    /** Food sources still present, in the order they were added. Change it with [addFood] and [removeFood]. */
+    val foods: List<FoodSource> get() = foodList
+
+    /** Bumped by every [addFood] and [removeFood], so caches built from [foods] know to rebuild. */
+    var foodsVersion = 0
+        private set
+
+    fun addFood(f: FoodSource) {
+        foodList += f
+        foodsVersion++
+    }
 
     /** Foods used up and removed; grow-only, so rocks never generate where food once was. */
     val pastFoods = ArrayList<FoodSource>()
@@ -67,11 +79,11 @@ class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean
             val px = entranceX + d * StrictMath.cos(a.toDouble()).toFloat()
             val py = entranceY + d * StrictMath.sin(a.toDouble()).toFloat()
             val base = ground.base(px, py)
-            foods += FoodSource(
+            addFood(FoodSource(
                 foods.size, FoodKind.HONEYDEW, px, py,
                 radius = 12f, quality = quality,
                 z = base + tall - 30f, bodyRadius = 8f, stemRadius = 2.5f, stemBase = base - 5f,
-            )
+            ))
         }
     }
 
@@ -84,17 +96,20 @@ class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean
             val body = 3f + r.nextFloat() * 5f
             val px = entranceX + d * StrictMath.cos(a.toDouble()).toFloat()
             val py = entranceY + d * StrictMath.sin(a.toDouble()).toFloat()
-            foods += FoodSource(
+            addFood(FoodSource(
                 foods.size, FoodKind.PREY, px, py,
                 radius = body + 4f, quality = 0.8f, loads = 20,
                 z = ground.base(px, py) + body * 0.4f, bodyRadius = body,
-            )
+            ))
         }
     }
 
     /** Removes a used-up [food], keeping it in [pastFoods] for rock placement. */
     fun removeFood(food: FoodSource) {
-        if (foods.remove(food)) pastFoods += food
+        if (foodList.remove(food)) {
+            pastFoods += food
+            foodsVersion++
+        }
     }
 
     /** The closest food on the ground (not a plant) whose edge is within [within] of (x, y), or null. */

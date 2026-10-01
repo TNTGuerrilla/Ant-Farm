@@ -23,7 +23,7 @@ class StemTest {
             s.foods.size, FoodKind.HONEYDEW, x, y, 12f, 1f,
             z = g + tall - 30f, bodyRadius = 8f, stemRadius = 2.5f, stemBase = g - 5f,
         )
-        s.foods += f
+        s.addFood(f)
         return f
     }
 

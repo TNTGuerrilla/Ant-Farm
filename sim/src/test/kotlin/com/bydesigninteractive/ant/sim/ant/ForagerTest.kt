@@ -13,7 +13,7 @@ class ForagerTest {
     private fun world(seed: Long, quality: Float, foragers: Int): World {
         val w = World(seed)
         w.predig(3)
-        w.surface.foods += FoodSource(0, FoodKind.HONEYDEW, w.surface.entranceX + 150f, w.surface.entranceY, 15f, quality)
+        w.surface.addFood(FoodSource(0, FoodKind.HONEYDEW, w.surface.entranceX + 150f, w.surface.entranceY, 15f, quality))
         repeat(foragers) { w.addAnt(Role.FORAGER) }
         return w
     }

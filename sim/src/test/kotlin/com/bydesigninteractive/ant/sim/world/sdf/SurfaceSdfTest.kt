@@ -14,6 +14,23 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SurfaceSdfTest {
+    /** The chunk food index must give exactly what scanning every food gives. */
+    @Test
+    fun foodAddedOrRemovedChangesTheSurfaceAtOnce() {
+        val m = SurfaceMap(4, rocks = false)
+        val sdf = m.sdf
+        val x = 4500f
+        val y = 4000f
+        val g = m.ground.height(x, y)
+        val before = sdf.distance(x, y, g + 4f)
+        val food = FoodSource(0, FoodKind.PREY, x, y, 10f, 1f, loads = 1, z = g + 2f, bodyRadius = 5f)
+        m.addFood(food)
+        val with = sdf.distance(x, y, g + 4f)
+        assertTrue(with < before - 1f, "food body should be closer than the ground: $with vs $before")
+        m.removeFood(food)
+        assertEquals(before, sdf.distance(x, y, g + 4f))
+    }
+
     @Test
     fun withoutRocksTheSurfaceIsTheGround() {
         val m = SurfaceMap(3, rocks = false)
@@ -67,7 +84,7 @@ class SurfaceSdfTest {
         val s = assertNotNull(stone)
         val g = m.ground.height(s.x, s.y)
         val food = FoodSource(0, FoodKind.PREY, s.x, s.y, 6f, 1f)
-        m.foods += food
+        m.addFood(food)
         assertTrue(m.sdf.distance(food.x, food.y, g + 1f) > 0f)
     }
 
@@ -119,7 +136,7 @@ class SurfaceSdfTest {
     fun stemsAreWalkableAndDetected() {
         val m = SurfaceMap(3, rocks = false)
         val g = m.ground.height(4500f, 4000f)
-        m.foods += FoodSource(0, FoodKind.HONEYDEW, 4500f, 4000f, 12f, 1f, z = g + 470f, bodyRadius = 8f, stemRadius = 2.5f, stemBase = g - 5f)
+        m.addFood(FoodSource(0, FoodKind.HONEYDEW, 4500f, 4000f, 12f, 1f, z = g + 470f, bodyRadius = 8f, stemRadius = 2.5f, stemBase = g - 5f))
         assertEquals(0f, m.sdf.distance(4502.5f, 4000f, g + 200f), 0.01f)
         assertNotNull(m.sdf.stemAt(4504f, 4000f, g + 200f, 3f))
         assertNull(m.sdf.stemAt(4520f, 4000f, g + 200f, 3f))

@@ -9,6 +9,7 @@ import com.bydesigninteractive.ant.sim.world.SurfaceMap
 import java.util.Random
 import kotlin.math.floor
 import kotlin.math.hypot
+import kotlin.math.max
 import kotlin.math.sqrt
 
 /**
@@ -35,7 +36,9 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
     var fastHits = 0L
     var fastMisses = 0L
     private val own = arrayOfNulls<List<Blob>>(CHUNKS * CHUNKS)
-    private val near = arrayOfNulls<List<Blob>>(CHUNKS * CHUNKS)
+    private val near = arrayOfNulls<Array<Blob>>(CHUNKS * CHUNKS)
+    private val foodsByChunk = arrayOfNulls<Array<FoodSource>>(CHUNKS * CHUNKS)
+    private var foodIndexVersion = -1
     private val g = FloatArray(3)
 
     /**
@@ -45,7 +48,8 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
     fun distance(x: Float, y: Float, z: Float): Float {
         evaluations++
         var d = map.ground.distance(x, y, z)
-        val nearBlobs = blobsNear(x, y)
+        val k = chunkIndex(x, y)
+        val nearBlobs = near[k] ?: gather(k % CHUNKS, k / CHUNKS).also { near[k] = it }
         for (i in nearBlobs.indices) {
             val b = nearBlobs[i]
             if (b.near(x, y, z, MARGIN)) d = smin(d, b.distance(x, y, z), BLEND)
@@ -54,7 +58,7 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
             val b = placed[i]
             if (b.near(x, y, z, MARGIN)) d = smin(d, b.distance(x, y, z), BLEND)
         }
-        val foods = map.foods
+        val foods = foodsNear(k)
         for (i in foods.indices) {
             val f = foods[i]
             val body = f.body
@@ -121,14 +125,54 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
     /** A chunk's rocks if already generated, without generating them. */
     fun generatedBlobs(cx: Int, cy: Int): List<Blob>? = own[cx + cy * CHUNKS]
 
-    private fun blobsNear(x: Float, y: Float): List<Blob> {
+    private fun chunkIndex(x: Float, y: Float): Int {
         val cx = floor(x / CHUNK_MM).toInt().coerceIn(0, CHUNKS - 1)
         val cy = floor(y / CHUNK_MM).toInt().coerceIn(0, CHUNKS - 1)
-        return near[cx + cy * CHUNKS] ?: gather(cx, cy).also { near[cx + cy * CHUNKS] = it }
+        return cx + cy * CHUNKS
+    }
+
+    /** The foods whose shapes can reach into chunk [k], in [SurfaceMap.foods] order. */
+    private fun foodsNear(k: Int): Array<FoodSource> {
+        if (foodIndexVersion != map.foodsVersion) rebuildFoodIndex()
+        return foodsByChunk[k] ?: NO_FOOD
+    }
+
+    /**
+     * Lists each food in every chunk its near box (reach plus [MARGIN], plus 1 mm against
+     * rounding) overlaps. A point only ever passes a food's near test inside that box, so looping
+     * over a chunk's list gives exactly the result of looping over every food.
+     */
+    private fun rebuildFoodIndex() {
+        val lists = arrayOfNulls<ArrayList<FoodSource>>(CHUNKS * CHUNKS)
+        val foods = map.foods
+        for (i in foods.indices) {
+            val f = foods[i]
+            val r = foodReach(f) + MARGIN + 1f
+            val cx0 = floor((f.x - r) / CHUNK_MM).toInt().coerceIn(0, CHUNKS - 1)
+            val cx1 = floor((f.x + r) / CHUNK_MM).toInt().coerceIn(0, CHUNKS - 1)
+            val cy0 = floor((f.y - r) / CHUNK_MM).toInt().coerceIn(0, CHUNKS - 1)
+            val cy1 = floor((f.y + r) / CHUNK_MM).toInt().coerceIn(0, CHUNKS - 1)
+            for (cy in cy0..cy1) for (cx in cx0..cx1) {
+                val k = cx + cy * CHUNKS
+                (lists[k] ?: ArrayList<FoodSource>().also { lists[k] = it }) += f
+            }
+        }
+        for (k in lists.indices) foodsByChunk[k] = lists[k]?.toTypedArray()
+        foodIndexVersion = map.foodsVersion
+    }
+
+    /** The horizontal half-size of a food's shapes around (f.x, f.y): its body's reach or its stem's radius. */
+    private fun foodReach(f: FoodSource): Float {
+        var r = 0f
+        val body = f.body
+        if (body != null) r = max(r, body.reach)
+        val stem = f.stem
+        if (stem != null) r = max(r, stem.radius)
+        return r
     }
 
     /** This chunk's blobs plus neighbors' blobs whose bounds reach into it. */
-    private fun gather(cx: Int, cy: Int): List<Blob> {
+    private fun gather(cx: Int, cy: Int): Array<Blob> {
         val x0 = cx * CHUNK_MM - MARGIN
         val y0 = cy * CHUNK_MM - MARGIN
         val x1 = (cx + 1) * CHUNK_MM + MARGIN
@@ -140,7 +184,7 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
                 if (b.cx + b.reach >= x0 && b.cx - b.reach <= x1 && b.cy + b.reach >= y0 && b.cy - b.reach <= y1) out += b
             }
         }
-        return out
+        return out.toTypedArray()
     }
 
     private fun generate(cx: Int, cy: Int): List<Blob> {
@@ -177,5 +221,6 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
         const val PEBBLE_LUMP = 0.12f
         const val ROCK_LUMP = 0.15f
         const val BLOB_SALT = 0xB10BL
+        val NO_FOOD = emptyArray<FoodSource>()
     }
 }

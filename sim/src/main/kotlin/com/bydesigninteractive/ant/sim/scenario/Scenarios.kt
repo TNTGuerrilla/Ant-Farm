@@ -38,10 +38,10 @@ object Scenarios {
         w.predig(5)
         val s = w.surface
         for ((id, x) in listOf(0 to s.entranceX - distance, 1 to s.entranceX + distance)) {
-            s.foods += FoodSource(
+            s.addFood(FoodSource(
                 id, FoodKind.HONEYDEW, x, s.entranceY, 15f, quality,
                 z = s.ground.height(x, s.entranceY) + 3f, bodyRadius = 8f,
-            )
+            ))
         }
         repeat(foragers) { w.addAnt(Role.FORAGER) }
         return w
