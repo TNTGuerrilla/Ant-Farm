@@ -55,43 +55,39 @@ void main() {
 }
 """
 
-    // Ants: model space x forward, y left, z up; instances carry position + gait phase, forward + gaster fill, up + carry, and model scale.
+    // Ants: model space x forward, y left, z up. Instances carry (see AntInstances) position + body bob,
+    // unit forward + gaster fill, unit up + carry, unit left + model scale, and the gait values.
+    // a_group is the leg's tripod sign (1 for A, -1 for B, 0 off the legs).
     private const val ANT_VERT = """
 attribute vec3 a_position;
 attribute vec3 a_normal;
 attribute vec3 a_color;
 attribute float a_part;
 attribute vec3 a_pivot;
+attribute float a_group;
 attribute vec4 i_pos;
 attribute vec4 i_fwd;
 attribute vec4 i_up;
-attribute float i_scale;
+attribute vec4 i_left;
+attribute vec3 i_gait;
 uniform mat4 u_projView;
 """ + LIGHT + """
 varying vec3 v_color;
 varying float v_fog;
-const float TAU = 6.2831853;
 void main() {
     vec3 p = a_position;
     vec3 n = a_normal;
     float part = floor(a_part + 0.5);
-    float phase = i_pos.w;
-    if (part >= 1.0 && part <= 6.0) {
-        float leg = part - 1.0;
-        float group = (leg == 0.0 || leg == 4.0 || leg == 2.0) ? 0.0 : 0.5;
-        float s = sin(TAU * (phase + group));
-        // Yaw by angle t about z moves a foot at offset d from its pivot by -t * d.y along x (small t).
-        // A left foot has d.y > 0 and a right foot d.y < 0, so the sign of the swing must follow the
-        // side: with swing = -0.35 * s * sign(pivot.y), the foot's x velocity is proportional to
-        // 0.35 * cos(TAU * (phase + group)) for both sides. The lift below happens while that cosine
-        // is positive, so the foot is raised exactly while it moves toward +x (the forward stroke).
-        float swing = -0.35 * s * sign(a_pivot.y);
+    if (a_group != 0.0) {
+        // The swing angle is -0.35 sin(TAU (phase + g)) times the side, so its cosine is the same for
+        // every leg and its sine flips with the group and the side (i_gait.y is tripod A's left leg).
+        // The foot is raised while it moves toward +x (the forward stroke); see AntInstances.gait.
+        float c = i_gait.x;
+        float sn = i_gait.y * a_group * sign(a_pivot.y);
         vec3 d = p - a_pivot;
-        float c = cos(swing);
-        float sn = sin(swing);
         p = a_pivot + vec3(c * d.x - sn * d.y, sn * d.x + c * d.y, d.z);
         n = vec3(c * n.x - sn * n.y, sn * n.x + c * n.y, n.z);
-        p.z += 0.25 * max(0.0, cos(TAU * (phase + group))) * clamp(-d.z / 0.65, 0.0, 1.0);
+        p.z += max(0.0, a_group * i_gait.z) * clamp(-d.z / 0.65, 0.0, 1.0);
     } else if (part == 7.0) {
         p = a_pivot + (p - a_pivot) * (1.0 + 0.4 * i_fwd.w);
     } else if (part == 8.0) {
@@ -99,11 +95,11 @@ void main() {
     } else if (part == 9.0) {
         if (abs(i_up.w - 2.0) > 0.5) p = a_pivot;
     }
-    p.z += 0.05 * sin(2.0 * TAU * phase);
-    vec3 f = normalize(i_fwd.xyz);
-    vec3 u = normalize(i_up.xyz);
-    vec3 l = normalize(cross(u, f));
-    p *= i_scale;
+    p.z += i_pos.w;
+    vec3 f = i_fwd.xyz;
+    vec3 u = i_up.xyz;
+    vec3 l = i_left.xyz;
+    p *= i_left.w;
     vec3 world = i_pos.xyz + f * p.x + l * p.y + u * p.z;
     vec3 wn = normalize(f * n.x + l * n.y + u * n.z);
     v_color = lit(a_color, wn);
@@ -119,17 +115,18 @@ attribute float a_alpha;
 attribute vec4 i_pos;
 attribute vec4 i_fwd;
 attribute vec4 i_up;
-attribute float i_scale;
+attribute vec4 i_left;
 uniform mat4 u_projView;
 uniform vec3 u_sunDir;
 uniform float u_strength;
 varying float v_alpha;
 void main() {
-    vec3 f = normalize(i_fwd.xyz);
-    vec3 u = normalize(i_up.xyz);
-    vec3 l = normalize(cross(u, f));
-    vec3 offset = (u_sunDir - u * dot(u_sunDir, u)) * 0.8 * i_scale;
-    vec3 world = i_pos.xyz + offset + (f * a_position.x + l * a_position.y) * i_scale + u * 0.2;
+    vec3 f = i_fwd.xyz;
+    vec3 u = i_up.xyz;
+    vec3 l = i_left.xyz;
+    float scale = i_left.w;
+    vec3 offset = (u_sunDir - u * dot(u_sunDir, u)) * 0.8 * scale;
+    vec3 world = i_pos.xyz + offset + (f * a_position.x + l * a_position.y) * scale + u * 0.2;
     v_alpha = a_alpha * u_strength;
     gl_Position = u_projView * vec4(world, 1.0);
 }

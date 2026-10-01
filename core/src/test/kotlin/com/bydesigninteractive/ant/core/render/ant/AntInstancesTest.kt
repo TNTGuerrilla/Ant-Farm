@@ -6,6 +6,9 @@ import com.bydesigninteractive.ant.core.engine.AntPose
 import com.bydesigninteractive.ant.core.engine.CARRY_PELLET
 import com.bydesigninteractive.ant.core.render.AntAnimator
 import com.bydesigninteractive.ant.sim.ant.Space
+import kotlin.math.cos
+import kotlin.math.max
+import kotlin.math.sin
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -39,7 +42,7 @@ class AntInstancesTest {
 
     @Test
     fun antsSplitByDistanceAndNestAntsAreSkipped() {
-        val poses = listOf(pose(0, 100f), pose(1, 900f), pose(2, 50f, space = Space.NEST), pose(3, 400f), pose(4, 1300f))
+        val poses = listOf(pose(0, 100f), pose(1, 900f), pose(2, 50f, space = Space.NEST), pose(3, 350f), pose(4, 1300f))
         val b = fill(poses)
         assertEquals(1, b.detailed)
         assertEquals(1, b.shadowedSimple)
@@ -48,23 +51,32 @@ class AntInstancesTest {
         assertEquals(0, b.culledView)
         // detailed first, then the shadowed simple ant, then the plain one
         assertEquals(100f, b.x(0))
-        assertEquals(400f, b.x(1))
+        assertEquals(350f, b.x(1))
         assertEquals(900f, b.x(2))
-        assertEquals(0.5f, b.records[7])
-        assertEquals(CARRY_PELLET.toFloat(), b.records[11])
+        assertEquals(0.5f, b.records[AntInstances.CROP])
+        assertEquals(CARRY_PELLET.toFloat(), b.records[AntInstances.CARRY])
         assertEquals(1f, b.records[4]) // no smoothed forward yet: the pose's own
-        assertEquals(AntInstances.scale(0), b.records[12])
-        assertEquals(AntInstances.scale(3), b.records[AntInstances.FLOATS + 12])
-        assertEquals(AntInstances.scale(1), b.records[2 * AntInstances.FLOATS + 12])
+        // left is up cross forward: +y for an ant facing +x on flat ground
+        assertEquals(0f, b.records[12], 1e-6f)
+        assertEquals(1f, b.records[13], 1e-6f)
+        assertEquals(0f, b.records[14], 1e-6f)
+        assertEquals(AntInstances.scale(0), b.records[AntInstances.SCALE])
+        assertEquals(AntInstances.scale(3), b.records[AntInstances.FLOATS + AntInstances.SCALE])
+        assertEquals(AntInstances.scale(1), b.records[2 * AntInstances.FLOATS + AntInstances.SCALE])
+        // a standing ant (phase 0): no swing, no bob, tripod A's feet at the top of their lift
+        assertEquals(0f, b.records[AntInstances.BOB], 1e-6f)
+        assertEquals(1f, b.records[AntInstances.GAIT], 1e-6f)
+        assertEquals(0f, b.records[AntInstances.GAIT + 1], 1e-6f)
+        assertEquals(AntInstances.LIFT_MM, b.records[AntInstances.GAIT + 2], 1e-6f)
     }
 
     @Test
     fun antsShrinkToNothingBeforeTheDrawDistance() {
         val b = fill(listOf(pose(0, 1100f), pose(1, 1199f)))
         assertEquals(2, b.simple)
-        val half = b.records[12] / AntInstances.scale(0)
+        val half = b.records[AntInstances.SCALE] / AntInstances.scale(0)
         assertEquals(0.5f, half, 0.01f)
-        assertTrue(b.records[AntInstances.FLOATS + 12] < 0.01f, "an ant at the edge is nearly gone")
+        assertTrue(b.records[AntInstances.FLOATS + AntInstances.SCALE] < 0.01f, "an ant at the edge is nearly gone")
     }
 
     @Test
@@ -87,7 +99,7 @@ class AntInstancesTest {
     }
 
     @Test
-    fun atMostTheNearestHundredAndFiftyAntsAreDetailed() {
+    fun atMostTheNearestEightyAntsAreDetailed() {
         val rnd = Random(3)
         val poses = (0 until 600).map { pose(it, 80f + rnd.nextFloat() * 200f, rnd.nextFloat() * 20f - 10f) }
         val b = fill(poses)
@@ -126,5 +138,55 @@ class AntInstancesTest {
         assertEquals(4f, lengths.average().toFloat(), 0.05f)
         assertEquals(AntInstances.bodyLength(7), AntInstances.bodyLength(7))
         assertEquals(AntInstances.bodyLength(7) / AntInstances.MODEL_LENGTH_MM, AntInstances.scale(7), 1e-6f)
+    }
+
+    @Test
+    fun aSlantedForwardIsDrawnAsUnitVectors() {
+        val p = pose(0, 100f).apply { fx = 2f; fy = 0f; fz = 1f; nz = 3f }
+        val b = fill(listOf(p))
+        val r = b.records
+        fun len(o: Int) = kotlin.math.sqrt(r[o] * r[o] + r[o + 1] * r[o + 1] + r[o + 2] * r[o + 2])
+        assertEquals(1f, len(4), 1e-5f)
+        assertEquals(1f, len(8), 1e-5f)
+        assertEquals(1f, len(12), 1e-5f)
+        // the old shader's normalize(cross(normalize(up), normalize(forward)))
+        assertEquals(1f, r[13], 1e-5f)
+    }
+
+    /** The old vertex shader's leg swing angle, lift and body bob for [phase], tripod [group] (0 for A, 0.5 for B) and [side] (1 left, -1 right). */
+    private fun oldLeg(phase: Float, group: Float, side: Float): FloatArray {
+        val tau = 6.2831853f
+        val s = sin(tau * (phase + group))
+        val swing = -0.35f * s * side
+        val lift = 0.25f * max(0f, cos(tau * (phase + group)))
+        return floatArrayOf(cos(swing), sin(swing), lift, 0.05f * sin(2f * tau * phase))
+    }
+
+    /** The new vertex shader's values from the CPU gait record for tripod sign [group] (1 for A, -1 for B) and [side]. */
+    private fun newLeg(g: FloatArray, group: Float, side: Float): FloatArray =
+        floatArrayOf(g[1], g[2] * group * side, max(0f, group * g[3]), g[0])
+
+    @Test
+    fun theCpuGaitMatchesTheOldShaderFormula() {
+        val g = FloatArray(4)
+        for (phase in floatArrayOf(0f, 0.1f, 0.2f, 0.25f, 0.37f, 0.5f, 0.63f, 0.75f, 0.9f, 0.999f)) {
+            AntInstances.gait(phase, g, 0, 1)
+            for (tripod in 0 until 2) for (side in floatArrayOf(1f, -1f)) {
+                val old = oldLeg(phase, if (tripod == 0) 0f else 0.5f, side)
+                val new = newLeg(g, if (tripod == 0) 1f else -1f, side)
+                for (k in 0 until 4) assertEquals(old[k], new[k], 1e-5f, "phase $phase tripod $tripod side $side value $k")
+            }
+        }
+    }
+
+    @Test
+    fun theRecordCarriesTheAnimatorsGait() {
+        val animator = AntAnimator()
+        val b = AntBatch(16)
+        AntInstances.fill(listOf(pose(0, 100f)), animator, TurnSmoother(), camera(), b)
+        val g = FloatArray(4)
+        AntInstances.gait(animator.phase(0), g, 0, 1)
+        assertEquals(g[0], b.records[AntInstances.BOB])
+        for (k in 0 until 3) assertEquals(g[k + 1], b.records[AntInstances.GAIT + k])
     }
 }

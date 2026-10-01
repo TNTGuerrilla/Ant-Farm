@@ -28,6 +28,25 @@ class AntMeshTest {
     }
 
     @Test
+    fun everyLegVertexCarriesItsTripodSign() {
+        for (detailed in listOf(true, false)) {
+            val v = AntMesh.build(detailed)
+            val p = parts(v)
+            for (i in p.indices) {
+                val group = v[i * AntMesh.STRIDE + AntMesh.GROUP]
+                val want = when {
+                    p[i] !in 1..6 -> 0f
+                    (p[i] - 1) in AntMesh.TRIPOD_A -> 1f
+                    else -> -1f
+                }
+                assertEquals(want, group, "vertex $i part ${p[i]} (detailed=$detailed)")
+            }
+            // each tripod has a leg on both sides: left legs are parts 1 to 3, right legs 4 to 6
+            assertEquals(setOf(1, 3, 5), (1..6).filter { AntMesh.groupSign(it) == 1f }.toSet())
+        }
+    }
+
+    @Test
     fun theSimpleAntHasNoCarriedPiecesButKeepsItsPartCodes() {
         val p = parts(AntMesh.build(false)).toSet()
         assertTrue(AntMesh.PART_PELLET !in p && AntMesh.PART_PREY !in p, "simple ant parts $p")

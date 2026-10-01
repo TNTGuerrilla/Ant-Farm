@@ -10,14 +10,19 @@ import kotlin.math.sqrt
  * (thin three-sided prisms), and hidden carried pieces (a soil pellet and a prey piece) the shader
  * shows per ant. The simple model (`build(false)`) has fewer facets, one-segment legs, no antennae
  * or mandibles and no carried pieces; it keeps the part codes, so the same shader draws it. Every vertex carries a part code and a pivot: a leg's hip, the gaster's centre,
- * or the mandible tip, so the shader can swing legs, swell the gaster and show the load.
+ * or the mandible tip, so the shader can swing legs, swell the gaster and show the load. Last
+ * comes the tripod group sign: 1 for a leg of [TRIPOD_A], -1 for the other three legs, 0 off the
+ * legs, so the shader picks the group's gait values without testing the leg.
  * Model space is mm with x forward, y left, z up; the feet touch z = 0.
  *
  * Every triangle is counter-clockwise seen from outside its part, so the ant can be drawn with
  * back-face culling (the mandible blades are the one deliberate exception, they are double sided).
  */
 object AntMesh {
-    const val STRIDE = 13
+    const val STRIDE = 14
+
+    /** The offset of the tripod group sign within a vertex. */
+    const val GROUP = 13
     const val PART_BODY = 0
     const val PART_GASTER = 7
     const val PART_PELLET = 8
@@ -31,6 +36,13 @@ object AntMesh {
     private const val LIMB = 0.6f
     private val MANDIBLE_TIP = floatArrayOf(2.75f, 0f, 0.75f)
 
+    /** The tripod group sign for [part]: 1 for a leg of [TRIPOD_A], -1 for another leg, 0 for anything else. */
+    fun groupSign(part: Int): Float = when {
+        part < 1 || part > 6 -> 0f
+        (part - 1) in TRIPOD_A -> 1f
+        else -> -1f
+    }
+
     private class Out {
         val v = ArrayList<Float>()
 
@@ -41,10 +53,11 @@ object AntMesh {
             var nx = uy * wz - uz * wy; var ny = uz * wx - ux * wz; var nz = ux * wy - uy * wx
             val l = sqrt(nx * nx + ny * ny + nz * nz).coerceAtLeast(1e-9f)
             nx /= l; ny /= l; nz /= l
+            val group = groupSign(part)
             for (p in arrayOf(a, b, c)) {
                 v += p[0]; v += p[1]; v += p[2]; v += nx; v += ny; v += nz
                 v += color[0] * shade; v += color[1] * shade; v += color[2] * shade
-                v += part.toFloat(); v += pivot[0]; v += pivot[1]; v += pivot[2]
+                v += part.toFloat(); v += pivot[0]; v += pivot[1]; v += pivot[2]; v += group
             }
         }
     }

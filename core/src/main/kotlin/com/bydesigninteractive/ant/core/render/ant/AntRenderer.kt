@@ -21,17 +21,32 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * Packs surface ants into instance records of [FLOATS] floats: position and gait phase, forward
- * (the [TurnSmoother]'s drawn forward) and gaster fill (crop), up and carry code, and the model
- * scale. Nest ants are skipped, and so are ants [ANT_DRAW_MM] or more from the eye and ants whose
+ * Packs surface ants into instance records of [FLOATS] floats: position and body bob; the unit
+ * forward (the [TurnSmoother]'s drawn forward) and gaster fill (crop); the unit up and carry code;
+ * the unit left (up cross forward) and the model scale; and the gait values from [gait]. The
+ * gait trigonometry and the frame vectors are worked out here once per ant, so the vertex shader
+ * does none of it per vertex. Nest ants are skipped, and so are ants [ANT_DRAW_MM] or more from the eye and ants whose
  * bounding sphere lies outside the view; ants shrink to nothing over the last [FADE_MM] before
  * [ANT_DRAW_MM], so none pops. At most [MAX_DETAILED] ants, the nearest within [NEAR_MM], get the
  * detailed model; every other drawn ant gets the simple one. Pure, so it unit-tests on the JVM.
  */
 object AntInstances {
-    const val FLOATS = 13
-    const val NEAR_MM = 300f
-    const val MAX_DETAILED = 150
+    const val FLOATS = 19
+    const val NEAR_MM = 250f
+    const val MAX_DETAILED = 80
+
+    /** Record offsets: body bob, crop, carry code, scale and the first gait value. */
+    const val BOB = 3
+    const val CROP = 7
+    const val CARRY = 11
+    const val SCALE = 15
+    const val GAIT = 16
+
+    /** Leg swing amplitude (rad), foot lift and body bob (mm at model scale). */
+    const val SWING_RAD = 0.35f
+    const val LIFT_MM = 0.25f
+    const val BOB_MM = 0.05f
+    private const val TAU = 6.2831853f
 
     /** Ants this far from the eye or farther are not drawn. */
     const val ANT_DRAW_MM = 1200f
@@ -40,7 +55,7 @@ object AntInstances {
     const val FADE_MM = 200f
 
     /** Only ants nearer than this cast a shadow. */
-    const val SHADOW_MM = 600f
+    const val SHADOW_MM = 400f
 
     /** The bounding sphere's radius at model scale (mm): the model reaches 3.55 mm from its origin (an antenna tip). */
     const val BOUND_MM = 4f
@@ -59,6 +74,27 @@ object AntInstances {
 
     /** The size factor for an ant at squared distance [d2] from the eye: 1 nearer than the fade band, falling to 0 at [ANT_DRAW_MM]. */
     fun fade(d2: Float): Float = ((ANT_DRAW_MM - sqrt(d2)) / FADE_MM).coerceIn(0f, 1f)
+
+    /**
+     * Writes the gait for [phase] (0 to 1 per stride) into [dst]: the body bob at [o], and from
+     * [gaitAt] the swing's cosine, the swing's sine for a left leg of tripod A, and the lift factor
+     * for tripod A. Tripod B runs half a cycle later, so its sine of the stride angle and its
+     * cosine are the negations of A's: the swing's cosine is the same for both groups and both sides
+     * (cosine is even), and the shader gets a leg's swing sine as `dst[gaitAt + 1] * group * side` and
+     * its lift as `max(0, group * dst[gaitAt + 2])`, with group 1 for A and -1 for B and side the sign of the
+     * hip's y. This matches the old per-vertex formulas exactly:
+     * swing = -[SWING_RAD] sin(TAU (phase + g)) side, lift = [LIFT_MM] max(0, cos(TAU (phase + g))),
+     * bob = [BOB_MM] sin(2 TAU phase), with g = 0 for A and 0.5 for B.
+     */
+    fun gait(phase: Float, dst: FloatArray, o: Int, gaitAt: Int) {
+        val sA = sin(TAU * phase)
+        val cA = cos(TAU * phase)
+        val swing = -SWING_RAD * sA
+        dst[o] = BOB_MM * 2f * sA * cA
+        dst[gaitAt] = cos(swing)
+        dst[gaitAt + 1] = sin(swing)
+        dst[gaitAt + 2] = LIFT_MM * cA
+    }
 
     /**
      * Fills [out] from [poses] as seen from [camera], whose position and frustum must be up to
@@ -119,10 +155,26 @@ object AntInstances {
             } else {
                 dst = tail; o = nt * FLOATS; nt++
             }
-            dst[o] = p.x; dst[o + 1] = p.y; dst[o + 2] = p.z; dst[o + 3] = animator.phase(p.id)
-            dst[o + 4] = turns.fx(p.id, p.fx); dst[o + 5] = turns.fy(p.id, p.fy); dst[o + 6] = turns.fz(p.id, p.fz); dst[o + 7] = p.crop
-            dst[o + 8] = p.nx; dst[o + 9] = p.ny; dst[o + 10] = p.nz; dst[o + 11] = p.carry.toFloat()
-            dst[o + 12] = scale(p.id) * fade(d2)
+            var fx = turns.fx(p.id, p.fx)
+            var fy = turns.fy(p.id, p.fy)
+            var fz = turns.fz(p.id, p.fz)
+            var k = 1f / sqrt(fx * fx + fy * fy + fz * fz).coerceAtLeast(1e-9f)
+            fx *= k; fy *= k; fz *= k
+            var ux = p.nx
+            var uy = p.ny
+            var uz = p.nz
+            k = 1f / sqrt(ux * ux + uy * uy + uz * uz).coerceAtLeast(1e-9f)
+            ux *= k; uy *= k; uz *= k
+            var lx = uy * fz - uz * fy
+            var ly = uz * fx - ux * fz
+            var lz = ux * fy - uy * fx
+            k = 1f / sqrt(lx * lx + ly * ly + lz * lz).coerceAtLeast(1e-9f)
+            lx *= k; ly *= k; lz *= k
+            dst[o] = p.x; dst[o + 1] = p.y; dst[o + 2] = p.z
+            dst[o + 4] = fx; dst[o + 5] = fy; dst[o + 6] = fz; dst[o + CROP] = p.crop
+            dst[o + 8] = ux; dst[o + 9] = uy; dst[o + 10] = uz; dst[o + CARRY] = p.carry.toFloat()
+            dst[o + 12] = lx; dst[o + 13] = ly; dst[o + 14] = lz; dst[o + SCALE] = scale(p.id) * fade(d2)
+            gait(animator.phase(p.id), dst, o + BOB, o + GAIT)
         }
         System.arraycopy(mid, 0, records, nd * FLOATS, nm * FLOATS)
         System.arraycopy(tail, 0, records, (nd + nm) * FLOATS, nt * FLOATS)
@@ -283,7 +335,8 @@ class AntRenderer : Disposable {
         VertexAttribute(VertexAttributes.Usage.Generic, 4, "i_pos"),
         VertexAttribute(VertexAttributes.Usage.Generic, 4, "i_fwd"),
         VertexAttribute(VertexAttributes.Usage.Generic, 4, "i_up"),
-        VertexAttribute(VertexAttributes.Usage.Generic, 1, "i_scale"),
+        VertexAttribute(VertexAttributes.Usage.Generic, 4, "i_left"),
+        VertexAttribute(VertexAttributes.Usage.Generic, 3, "i_gait"),
     )
 
     private fun model(v: FloatArray): Mesh {
@@ -294,6 +347,7 @@ class AntRenderer : Disposable {
             VertexAttribute(VertexAttributes.Usage.Generic, 3, "a_color"),
             VertexAttribute(VertexAttributes.Usage.Generic, 1, "a_part"),
             VertexAttribute(VertexAttributes.Usage.Generic, 3, "a_pivot"),
+            VertexAttribute(VertexAttributes.Usage.Generic, 1, "a_group"),
         )
         try {
             m.setVertices(v)
