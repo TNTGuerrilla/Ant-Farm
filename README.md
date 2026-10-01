@@ -15,7 +15,7 @@ Gradle needs JDK 17. If `JAVA_HOME` points at an older JDK, point it at a JDK 17
 
 - Tests: `.\gradlew.bat :sim:test :core:test`
 - Desktop: `.\gradlew.bat :desktop:run`
-- TV APK: `.\gradlew.bat :android:assembleDebug` (output in `android\build\outputs\apk\debug\`)
+- TV APK: `.\gradlew.bat :android:assembleProfile` (output in `android\build\outputs\apk\profile\`; not debuggable, which is what the TV runs and what is measured there)
 
 ## The app (milestone M1, desktop)
 
@@ -43,7 +43,7 @@ To try the app on a Google TV, connect adb to the TV (network debugging), then i
 
 ```powershell
 $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
-& $adb install -r android\build\outputs\apk\debug\android-debug.apk
+& $adb install -r android\build\outputs\apk\profile\android-profile.apk
 & $adb shell settings get secure screensaver_components
 & $adb shell settings put secure screensaver_components com.bydesigninteractive.ant/.AntDream
 & $adb logcat -s AntFarm
