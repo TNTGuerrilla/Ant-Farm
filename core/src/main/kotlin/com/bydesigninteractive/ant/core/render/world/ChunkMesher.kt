@@ -1,9 +1,12 @@
 package com.bydesigninteractive.ant.core.render.world
 
+import com.bydesigninteractive.ant.core.engine.FoodView
 import com.bydesigninteractive.ant.sim.util.hash
 import com.bydesigninteractive.ant.sim.world.CHUNK_MM
 import com.bydesigninteractive.ant.sim.world.ChunkedField
+import com.bydesigninteractive.ant.sim.world.FoodKind
 import com.bydesigninteractive.ant.sim.world.SURFACE_MM
+import com.bydesigninteractive.ant.sim.world.sdf.Blob
 import com.bydesigninteractive.ant.sim.world.sdf.HeightField
 import java.util.Random
 import kotlin.math.abs
@@ -13,11 +16,12 @@ import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Builds the low-poly meshes of one surface chunk from the seed and published data: the ground as
- * jittered flat facets on the height field (spoil included), and baked faceted specks. Rocks and
- * food are added in later tasks. It owns its own [HeightField] and spoil mirror, so it runs on the
+ * jittered flat facets on the height field (spoil included), and baked faceted specks; rocks as
+ * smooth icospheres fitted to each rock's distance function; and flat-shaded food. It owns its own [HeightField] and spoil mirror, so it runs on the
  * mesher thread without touching the live world. Not thread-safe.
  */
 class ChunkMesher(private val seed: Long) {
@@ -70,6 +74,127 @@ class ChunkMesher(private val seed: Long) {
         }
         specks(b, cx, cy, Facets(xs, ys, zs, diag, cx, cy))
         return b.build()
+    }
+
+    private val ico1 = Icosphere.build(1)
+    private val ico2 = Icosphere.build(2)
+
+    /** Smooth-shaded rocks: each vertex of an icosphere moved (from the rock ellipsoid) onto the rock's own surface, normals from its gradient. */
+    fun rocks(blobs: List<Blob>): MeshData {
+        val b = MeshBuilder(blobs.size * 320 * 3 + 16)
+        val p = FloatArray(3)
+        val n = FloatArray(3)
+        for (blob in blobs) {
+            val (verts, tris) = if (blob.reach < PEBBLE_REACH) ico1 else ico2
+            val pos = FloatArray(verts.size)
+            val nor = FloatArray(verts.size)
+            for (k in 0 until verts.size / 3) {
+                p[0] = blob.cx + verts[k * 3] * blob.rx
+                p[1] = blob.cy + verts[k * 3 + 1] * blob.ry
+                p[2] = blob.cz + verts[k * 3 + 2] * blob.rz
+                projectOnto(blob, p, n)
+                p.copyInto(pos, k * 3)
+                n.copyInto(nor, k * 3)
+            }
+            val h = hash(seed xor ROCK_SALT, blob.cx.toInt(), blob.cy.toInt())
+            val f = 0.9f + ((h and 0xFF).toFloat() / 255f) * 0.2f
+            for (t in tris.indices step 3) for (c in 0 until 3) {
+                val k = tris[t + c] * 3
+                b.vertex(pos[k], pos[k + 1], pos[k + 2], nor[k], nor[k + 1], nor[k + 2], STONE_R * f, STONE_G * f, STONE_B * f)
+            }
+        }
+        return b.build()
+    }
+
+    /** Newton steps along the gradient of [blob]'s distance until [p] is on its surface; the unit gradient goes into [n]. */
+    private fun projectOnto(blob: Blob, p: FloatArray, n: FloatArray) {
+        for (step in 0 until PROJECT_STEPS) {
+            val d = blob.distance(p[0], p[1], p[2])
+            gradient(blob, p, n)
+            p[0] -= n[0] * d
+            p[1] -= n[1] * d
+            p[2] -= n[2] * d
+            if (abs(d) < 0.005f) break
+        }
+        gradient(blob, p, n)
+    }
+
+    private fun gradient(blob: Blob, p: FloatArray, n: FloatArray) {
+        val e = 0.05f
+        val gx = blob.distance(p[0] + e, p[1], p[2]) - blob.distance(p[0] - e, p[1], p[2])
+        val gy = blob.distance(p[0], p[1] + e, p[2]) - blob.distance(p[0], p[1] - e, p[2])
+        val gz = blob.distance(p[0], p[1], p[2] + e) - blob.distance(p[0], p[1], p[2] - e)
+        val l = sqrt(gx * gx + gy * gy + gz * gz).coerceAtLeast(1e-9f)
+        n[0] = gx / l; n[1] = gy / l; n[2] = gz / l
+    }
+
+    /** Flat-shaded food: six-sided stems with aphid clusters for plants, faceted lumps for prey and feeders. */
+    fun foods(foods: List<FoodView>): MeshData {
+        val b = MeshBuilder(1024)
+        for (f in foods) {
+            if (f.stemRadius > 0f) stem(b, f)
+            if (f.bodyRadius > 0f) {
+                when {
+                    f.stemRadius > 0f -> aphidCluster(b, f)
+                    f.kind == FoodKind.PREY -> lump(b, f.x, f.y, f.z, f.bodyRadius, PREY_R, PREY_G, PREY_B, 0)
+                    else -> lump(b, f.x, f.y, f.z, f.bodyRadius, AMBER_R, AMBER_G, AMBER_B, 0)
+                }
+            }
+        }
+        return b.build()
+    }
+
+    private fun stem(b: MeshBuilder, f: FoodView) {
+        val r = f.stemRadius
+        for (k in 0 until 6) {
+            val a0 = k * 6.2832f / 6f
+            val a1 = (k + 1) * 6.2832f / 6f
+            val x0 = f.x + cos(a0) * r; val y0 = f.y + sin(a0) * r
+            val x1 = f.x + cos(a1) * r; val y1 = f.y + sin(a1) * r
+            val g = 0.85f + 0.15f * (k % 2)
+            b.flat(x0, y0, f.stemBase, x1, y1, f.stemBase, x1, y1, f.stemTop, STEM_R * g, STEM_G * g, STEM_B * g)
+            b.flat(x0, y0, f.stemBase, x1, y1, f.stemTop, x0, y0, f.stemTop, STEM_R * g, STEM_G * g, STEM_B * g)
+        }
+    }
+
+    private fun aphidCluster(b: MeshBuilder, f: FoodView) {
+        lump(b, f.x, f.y, f.z, f.bodyRadius, STEM_R * 1.2f, STEM_G * 1.2f, STEM_B, 0)
+        val r = Random(hash(seed xor APHID_SALT, f.x.toInt(), f.y.toInt()))
+        repeat(APHIDS) {
+            val u = r.nextFloat() * 2f - 1f
+            val a = r.nextFloat() * 6.2832f
+            val s = sqrt(1f - u * u)
+            val px = f.x + cos(a) * s * f.bodyRadius
+            val py = f.y + sin(a) * s * f.bodyRadius
+            val pz = f.z + u * f.bodyRadius
+            val dark = r.nextBoolean()
+            octahedron(b, px, py, pz, 1f + r.nextFloat() * 0.5f, if (dark) 0.12f else 0.45f, if (dark) 0.14f else 0.62f, if (dark) 0.10f else 0.25f)
+        }
+    }
+
+    private fun lump(b: MeshBuilder, x: Float, y: Float, z: Float, radius: Float, cr: Float, cg: Float, cb: Float, salt: Int) {
+        val (verts, tris) = ico1
+        val h = hash(seed xor LUMP_SALT, x.toInt() + salt, y.toInt())
+        for (t in tris.indices step 3) {
+            val i0 = tris[t] * 3; val i1 = tris[t + 1] * 3; val i2 = tris[t + 2] * 3
+            val f = 0.85f + (((h ushr (t % 40)) and 0xFF).toFloat() / 255f) * 0.3f
+            b.flat(
+                x + verts[i0] * radius, y + verts[i0 + 1] * radius, z + verts[i0 + 2] * radius,
+                x + verts[i1] * radius, y + verts[i1 + 1] * radius, z + verts[i1 + 2] * radius,
+                x + verts[i2] * radius, y + verts[i2 + 1] * radius, z + verts[i2 + 2] * radius,
+                cr * f, cg * f, cb * f,
+            )
+        }
+    }
+
+    private fun octahedron(b: MeshBuilder, x: Float, y: Float, z: Float, r: Float, cr: Float, cg: Float, cb: Float) {
+        val px = floatArrayOf(r, 0f, -r, 0f)
+        val py = floatArrayOf(0f, r, 0f, -r)
+        for (k in 0 until 4) {
+            val k2 = (k + 1) % 4
+            b.flat(x + px[k], y + py[k], z, x + px[k2], y + py[k2], z, x, y, z + r * 0.7f, cr, cg, cb)
+            b.flat(x + px[k2], y + py[k2], z, x + px[k], y + py[k], z, x, y, z - r * 0.7f, cr * 0.7f, cg * 0.7f, cb * 0.7f)
+        }
     }
 
     /** Worst |facet - true ground| over a barycentric lattice of the triangle (p, q, r). */
@@ -199,6 +324,24 @@ class ChunkMesher(private val seed: Long) {
         private const val FACET_SALT = 0x5011L
         private const val JITTER_SALT = 0x717L
         private const val SPECK_SALT = 0x5BECL
+        const val PEBBLE_REACH = 6f
+        const val PROJECT_STEPS = 12
+        const val APHIDS = 8
+        const val STONE_R = 128f / 255f
+        const val STONE_G = 124f / 255f
+        const val STONE_B = 116f / 255f
+        const val STEM_R = 79f / 255f
+        const val STEM_G = 122f / 255f
+        const val STEM_B = 52f / 255f
+        const val PREY_R = 200f / 255f
+        const val PREY_G = 182f / 255f
+        const val PREY_B = 140f / 255f
+        const val AMBER_R = 214f / 255f
+        const val AMBER_G = 150f / 255f
+        const val AMBER_B = 60f / 255f
+        private const val ROCK_SALT = 0x20CL
+        private const val APHID_SALT = 0xA41DL
+        private const val LUMP_SALT = 0x1E3FL
         private val SPECK_SHADES = arrayOf(
             floatArrayOf(96f / 255f, 64f / 255f, 40f / 255f),
             floatArrayOf(116f / 255f, 80f / 255f, 50f / 255f),
