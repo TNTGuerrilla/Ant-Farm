@@ -96,14 +96,19 @@ class ChunkMesher(private val seed: Long) {
                 p.copyInto(pos, k * 3)
                 n.copyInto(nor, k * 3)
             }
-            val h = hash(seed xor ROCK_SALT, blob.cx.toInt(), blob.cy.toInt())
-            val f = 0.9f + ((h and 0xFF).toFloat() / 255f) * 0.2f
+            val f = rockShade(blob)
             for (t in tris.indices step 3) for (c in 0 until 3) {
                 val k = tris[t + c] * 3
                 b.vertex(pos[k], pos[k + 1], pos[k + 2], nor[k], nor[k + 1], nor[k + 2], STONE_R * f, STONE_G * f, STONE_B * f)
             }
         }
         return b.build()
+    }
+
+    /** The rock's colour factor on the stone grey, 0.9 to 1.1, deterministic per seed and rock position. */
+    fun rockShade(blob: Blob): Float {
+        val h = hash(seed xor ROCK_SALT, blob.cx.toInt(), blob.cy.toInt())
+        return 0.9f + ((h and 0xFF).toFloat() / 255f) * 0.2f
     }
 
     /** Newton steps along the gradient of [blob]'s distance until [p] is on its surface; the unit gradient goes into [n]. */

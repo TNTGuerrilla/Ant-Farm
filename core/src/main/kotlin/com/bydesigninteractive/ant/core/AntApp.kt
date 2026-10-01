@@ -120,7 +120,7 @@ class AntApp(private val label: String, private val world: World, private val tv
         published = Published(world)
         chunkTextures = ChunkTextures(seed)
         nestRenderer = NestRenderer(seed, nestWidth, nestDepth, published)
-        topRenderer = SurfaceTopRenderer(published, chunkTextures, entranceX, entranceY)
+        topRenderer = SurfaceTopRenderer(seed, published, chunkTextures, entranceX, entranceY)
         renderer3d = DebugSurfaceRenderer(seed, published)
         Gdx.input.inputProcessor = object : InputAdapter() {
             override fun keyDown(keycode: Int): Boolean = onKey(keycode)

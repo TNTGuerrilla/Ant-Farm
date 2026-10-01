@@ -94,7 +94,7 @@ class NestRenderer(
         for (cy in 0 until TILE) for (cx in 0 until TILE) {
             val x = tx * TILE + cx
             val y = ty * TILE + cy
-            val v = 0.88f + unit(seed, x, y).toFloat() * 0.24f
+            val grain = unit(seed, x, y).toFloat()
             val m = when {
                 cells != null -> Material.entries[cells[cy * TILE + cx].toInt()]
                 x < width && y < depth -> generator.material(x, y)
@@ -107,6 +107,8 @@ class NestRenderer(
                 Material.STONE -> STONE
                 Material.WATER -> WATER
             }
+            // Dug air varies little, so tunnels read as clean light passages; solids keep the facet-like grain.
+            val v = if (m == Material.AIR) 0.96f + grain * 0.08f else 0.88f + grain * 0.24f
             p.drawPixel(cx, cy, Color.rgba8888(c.r * v, c.g * v, c.b * v, 1f))
         }
         return p
@@ -119,10 +121,15 @@ class NestRenderer(
 
     private companion object {
         const val BUILDS_PER_FRAME = 16
-        val AIR = Color(0.09f, 0.07f, 0.05f, 1f)
-        val SOIL = Color(0.40f, 0.29f, 0.20f, 1f)
-        val CLAY = Color(0.55f, 0.38f, 0.25f, 1f)
-        val STONE = Color(0.50f, 0.50f, 0.48f, 1f)
+        /** Dug tunnels: a warm light tan (about 200/166/122), so the near-black ants stand out clearly. */
+        val AIR = Color(0.784f, 0.651f, 0.478f, 1f)
+
+        /** Undisturbed soil: the surface soil's family (139/98/62), a little darker and cooler (about 112/84/62). */
+        val SOIL = Color(0.439f, 0.329f, 0.243f, 1f)
+        val CLAY = Color(0.52f, 0.35f, 0.24f, 1f)
+
+        /** The 3D view's stone grey (128/124/116). */
+        val STONE = Color(0.502f, 0.486f, 0.455f, 1f)
         val WATER = Color(0.20f, 0.28f, 0.35f, 1f)
     }
 }
