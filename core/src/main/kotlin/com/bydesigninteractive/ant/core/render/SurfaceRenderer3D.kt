@@ -34,7 +34,11 @@ import kotlin.math.floor
  * The low-poly 3D surface view. Chunks in a 5 by 5 ring around the camera focus are built by a
  * [ChunkCache] from published data and uploaded here, at most [UPLOADS_PER_FRAME] per frame; a
  * chunk is re-requested when its own or a neighbour's published spoil, or its rock list, changes,
- * at most every [REBUILD_NANOS] per chunk. The sky state comes from the [DayCycle]. Works in
+ * at most every [REBUILD_NANOS] per chunk. The inner 3 by 3 chunks get the fine ground
+ * ([ChunkMesher.CELLS]) and the outer ring the coarse one ([ChunkMesher.COARSE_CELLS]); a chunk
+ * whose ring changes as the focus moves is requested again at once, and its old meshes stay drawn
+ * until the new ones arrive. Both levels share the fine border, so they meet without cracks. Rocks
+ * are indexed meshes. The sky state comes from the [DayCycle]. Works in
  * simulation coordinates (mm, z up). Render thread only, except the cache's own thread.
  *
  * The nest entrance at ([entranceX], [entranceY]) (immutable, read before the simulation thread
@@ -61,6 +65,7 @@ class SurfaceRenderer3D(
     /** Running vertex totals per layer since the last [vertexSummary], and the frames they cover. */
     private var vGround = 0L
     private var vRocks = 0L
+    private var vRocksIdx = 0L
     private var vFood = 0L
     private var vGrass = 0L
     private var vAntsDetailed = 0L
@@ -110,12 +115,13 @@ class SurfaceRenderer3D(
      * One chunk's uploaded meshes and the published inputs it was last requested with: the 3 by 3
      * spoil block around it ([spoils], index (dx + 1) + (dy + 1) * 3) and its rock list
      * ([rockList]); [combined] is the current rock list, cached with the identities ([ownRocks],
-     * [placed]) it was combined from.
+     * [placed]) it was combined from. [cells] is the ground level last requested (0 before any).
      */
     private class Slot {
         var version = 0L
+        var cells = 0
         var ground: Mesh? = null
-        var rocks: Mesh? = null
+        var rocks: Array<Mesh> = NO_MESHES
         var grass = FloatArray(0)
         var spoils: Array<FloatArray?>? = null
         var rockList: List<Blob>? = null
@@ -165,14 +171,17 @@ class SurfaceRenderer3D(
 
     /**
      * The per-frame average vertices submitted per layer since the last call, for the log (for example
-     * ` verts ground 345k rocks 142k ...`), then resets the totals. Empty when no frame was drawn.
+     * ` verts ground 155k rocks 24k (idx 140k) ...`), then resets the totals. Empty when no frame was
+     * drawn. Non-indexed layers count their vertices; the indexed rocks count unique vertices (the
+     * vertex shader's work with a perfect post-transform cache) and show their index count in brackets
+     * (vertices as a non-indexed mesh would submit them).
      */
     fun vertexSummary(): String {
         val n = vFrames
         if (n == 0) return ""
-        val s = " verts ground ${k(vGround / n)} rocks ${k(vRocks / n)} food ${k(vFood / n)} grass ${k(vGrass / n)} " +
+        val s = " verts ground ${k(vGround / n)} rocks ${k(vRocks / n)} (idx ${k(vRocksIdx / n)}) food ${k(vFood / n)} grass ${k(vGrass / n)} " +
             "ants detailed ${k(vAntsDetailed / n)} simple ${k(vAntsSimple / n)} shadows ${k(vShadows / n)}"
-        vGround = 0; vRocks = 0; vFood = 0; vGrass = 0; vAntsDetailed = 0; vAntsSimple = 0; vShadows = 0; vFrames = 0
+        vGround = 0; vRocks = 0; vRocksIdx = 0; vFood = 0; vGrass = 0; vAntsDetailed = 0; vAntsSimple = 0; vShadows = 0; vFrames = 0
         return s
     }
 
@@ -229,7 +238,11 @@ class SurfaceRenderer3D(
         for ((key, slot) in slots) {
             if (abs(key % CHUNKS - fcx) > RING || abs(key / CHUNKS - fcy) > RING) continue // kept only for hysteresis
             if (drawGround) slot.ground?.let { it.render(world, GL20.GL_TRIANGLES); vGround += it.numVertices }
-            if (drawRocks) slot.rocks?.let { it.render(world, GL20.GL_TRIANGLES); vRocks += it.numVertices }
+            if (drawRocks) for (m in slot.rocks) {
+                m.render(world, GL20.GL_TRIANGLES)
+                vRocks += m.numVertices
+                vRocksIdx += m.numIndices
+            }
         }
         // Beyond the ring there is no ground drawn (or spoil mirrored) to set it in.
         if (drawGround && abs(floor(entranceX / CHUNK_MM).toInt() - fcx) <= RING && abs(floor(entranceY / CHUNK_MM).toInt() - fcy) <= RING) drawEntrance()
@@ -309,7 +322,9 @@ class SurfaceRenderer3D(
             val rocks = rocksFor(slot, cx, cy)
             val grassRocks = grassRocksFor(slot, cx, cy, rocks)
             val old = slot.spoils
-            var changed = slot.requested == 0L || old == null || rocks !== slot.rockList || grassRocks !== slot.grassRockList
+            val cells = if (abs(cx - fcx) <= 1 && abs(cy - fcy) <= 1) ChunkMesher.CELLS else ChunkMesher.COARSE_CELLS
+            val relevel = cells != slot.cells
+            var changed = slot.requested == 0L || old == null || relevel || rocks !== slot.rockList || grassRocks !== slot.grassRockList
             val spoils = spoilScratch
             for (dy in -1..1) for (dx in -1..1) {
                 val nx = cx + dx
@@ -318,12 +333,14 @@ class SurfaceRenderer3D(
                 spoils[i] = if (nx < 0 || ny < 0 || nx >= CHUNKS || ny >= CHUNKS) null else knownSpoil[nx + ny * CHUNKS]
                 if (!changed && !sameSpoil(spoils[i], old!![i])) changed = true
             }
-            if (changed && (slot.requested == 0L || now - slot.requestedAt >= REBUILD_NANOS)) {
+            // A new level is requested at once; the old meshes stay drawn until the new ones arrive.
+            if (changed && (slot.requested == 0L || relevel || now - slot.requestedAt >= REBUILD_NANOS)) {
                 val copy = spoils.copyOf()
                 slot.spoils = copy
                 slot.rockList = rocks
                 slot.grassRockList = grassRocks
-                slot.requested = cache.request(cx, cy, copy[4], rocks, copy, grassRocks)
+                slot.cells = cells
+                slot.requested = cache.request(cx, cy, copy[4], rocks, copy, grassRocks, cells)
                 slot.requestedAt = now
             }
         }
@@ -336,7 +353,7 @@ class SurfaceRenderer3D(
                 val e = it.next()
                 if (abs(e.key % CHUNKS - fcx) > RING + 1 || abs(e.key / CHUNKS - fcy) > RING + 1) {
                     e.value.ground?.dispose()
-                    e.value.rocks?.dispose()
+                    for (m in e.value.rocks) m.dispose()
                     it.remove()
                 }
             }
@@ -410,28 +427,33 @@ class SurfaceRenderer3D(
             if (r.version < slot.version) continue
             slot.version = r.version
             slot.ground?.dispose()
-            slot.rocks?.dispose()
+            for (m in slot.rocks) m.dispose()
             slot.ground = upload(r.ground)
-            slot.rocks = upload(r.rocks)
+            slot.rocks = if (r.rocks.isEmpty()) NO_MESHES else r.rocks.mapNotNull { upload(it) }.toTypedArray()
             slot.grass = r.grass
         }
     }
 
+    /** A static mesh of [d], indexed (16-bit) when [d] has indices; null when it has no vertices. */
     private fun upload(d: MeshData): Mesh? {
         if (d.vertexCount == 0) return null
+        val indices = d.indices
         return Mesh(
-            true, d.vertexCount, 0,
+            true, d.vertexCount, indices?.size ?: 0,
             VertexAttribute(VertexAttributes.Usage.Position, 3, "a_position"),
             VertexAttribute(VertexAttributes.Usage.Normal, 3, "a_normal"),
             VertexAttribute(VertexAttributes.Usage.Generic, 3, "a_color"),
-        ).apply { setVertices(d.vertices) }
+        ).apply {
+            setVertices(d.vertices)
+            if (indices != null) setIndices(indices)
+        }
     }
 
     override fun dispose() {
         cache.close()
         for (s in slots.values) {
             s.ground?.dispose()
-            s.rocks?.dispose()
+            for (m in s.rocks) m.dispose()
         }
         foodMesh?.dispose()
         entranceCone?.dispose()
@@ -448,6 +470,7 @@ class SurfaceRenderer3D(
         const val RING = 2
         const val UPLOADS_PER_FRAME = 2
         const val REBUILD_NANOS = 3_000_000_000L
+        val NO_MESHES = emptyArray<Mesh>()
 
         /** Whether two published spoil arrays hold the same values (null is no spoil). */
         fun sameSpoil(a: FloatArray?, b: FloatArray?): Boolean = a === b || (a != null && b != null && a.contentEquals(b))

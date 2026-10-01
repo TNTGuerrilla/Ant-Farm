@@ -20,7 +20,7 @@ import kotlin.math.sqrt
 
 /**
  * Builds the low-poly meshes of one surface chunk from the seed and published data: the ground as
- * jittered flat facets on the height field (spoil included), and baked faceted specks; rocks as
+ * jittered flat facets on the height field (spoil included) at a fine or coarse level, with baked faceted specks on the fine one; rocks as
  * smooth icospheres fitted to each rock's distance function; and flat-shaded food. It owns its own [HeightField] and spoil mirror, so it runs on the
  * mesher thread without touching the live world. Not thread-safe.
  */
@@ -35,11 +35,25 @@ class ChunkMesher(private val seed: Long) {
     fun spoilAt(x: Float, y: Float): Float = spoil.get(x, y)
 
     /**
-     * The ground and specks of chunk (cx, cy). A chunk's edge vertices read the spoil mirror at the
-     * edge, so mirror the neighbours' spoil ([setSpoil]) before meshing for watertight seams under spoil.
-     * Each cell's diagonal is the split with the smaller deviation from the height field.
+     * The ground of chunk (cx, cy) at [cells] by [cells] cells: [CELLS] (the fine level, with specks)
+     * or a coarser level for distant chunks (no specks). A chunk's edge vertices read the spoil
+     * mirror at the edge, so mirror the neighbours' spoil ([setSpoil]) before meshing for watertight
+     * seams under spoil. Each cell's diagonal is the split with the smaller deviation from the height
+     * field. Every vertex sits on the height field, and the fine level's facets stay within 1 mm of
+     * it; a coarse level makes no such promise.
+     *
+     * Both levels share the same chunk border: the fine grid's jittered edge vertices. A coarse
+     * chunk lays its [cells] grid over the interior (its outermost row and column of cells dropped)
+     * and joins that to the fine border with a stitching strip, so it meets a fine or coarse
+     * neighbour exactly, without cracks. Grid jitter is a function of the global vertex and level,
+     * so neighbouring chunks of either level agree.
      */
-    fun ground(cx: Int, cy: Int): MeshData {
+    fun ground(cx: Int, cy: Int, cells: Int = CELLS): MeshData {
+        require(cells == CELLS || cells in 3 until CELLS) { "cells $cells" }
+        return if (cells == CELLS) fineGround(cx, cy) else coarseGround(cx, cy, cells)
+    }
+
+    private fun fineGround(cx: Int, cy: Int): MeshData {
         val b = MeshBuilder(CELLS * CELLS * 6 + SPECK_VERTEX_BUDGET)
         val n = CELLS + 1
         val xs = FloatArray(n * n)
@@ -49,31 +63,107 @@ class ChunkMesher(private val seed: Long) {
             val gi = cx * CELLS + i
             val gj = cy * CELLS + j
             val k = i + j * n
-            xs[k] = jittered(gi, gj, 0)
-            ys[k] = jittered(gi, gj, 1)
+            xs[k] = jittered(gi, gj, 0, CELLS)
+            ys[k] = jittered(gi, gj, 1, CELLS)
             zs[k] = heights.height(xs[k], ys[k])
         }
-        // true: split along a-e (a, c, e + a, e, d); false: split along c-d (a, c, d + c, e, d)
         val diag = BooleanArray(CELLS * CELLS)
         for (j in 0 until CELLS) for (i in 0 until CELLS) {
             val a = i + j * n
-            val c = a + 1
-            val d = a + n
-            val e = d + 1
-            val ae = max(triDeviation(xs, ys, zs, a, c, e), triDeviation(xs, ys, zs, a, e, d))
-            val cd = max(triDeviation(xs, ys, zs, a, c, d), triDeviation(xs, ys, zs, c, e, d))
-            diag[i + j * CELLS] = ae <= cd
-            val h = hash(seed xor FACET_SALT, cx * CELLS + i, cy * CELLS + j)
-            if (diag[i + j * CELLS]) {
-                soilTri(b, xs, ys, zs, a, c, e, h ushr 8)
-                soilTri(b, xs, ys, zs, a, e, d, h ushr 20)
-            } else {
-                soilTri(b, xs, ys, zs, a, c, d, h ushr 8)
-                soilTri(b, xs, ys, zs, c, e, d, h ushr 20)
-            }
+            diag[i + j * CELLS] = quad(b, xs, ys, zs, a, a + 1, a + n, a + n + 1, hash(seed xor FACET_SALT, cx * CELLS + i, cy * CELLS + j))
         }
         specks(b, cx, cy, Facets(xs, ys, zs, diag, cx, cy))
         return b.build()
+    }
+
+    /**
+     * A coarse chunk: an interior grid of the coarse vertices 1 to cells - 1 on each axis, and a strip
+     * of triangles zipping its outer ring to the fine border (4 * [CELLS] edge vertices), walking both
+     * rings counter-clockwise from the chunk's south-west corner by their fraction of a side.
+     */
+    private fun coarseGround(cx: Int, cy: Int, cells: Int): MeshData {
+        val m = cells - 1 // interior vertices per axis: coarse indices 1 until cells
+        val side = m - 1 // interior ring segments per side
+        val ringIn = 4 * side
+        val ringOut = 4 * CELLS
+        val b = MeshBuilder((side * side * 2 + ringIn + ringOut) * 3)
+        val total = m * m + ringOut
+        val xs = FloatArray(total)
+        val ys = FloatArray(total)
+        val zs = FloatArray(total)
+        for (j in 0 until m) for (i in 0 until m) {
+            val gi = cx * cells + i + 1
+            val gj = cy * cells + j + 1
+            val k = i + j * m
+            xs[k] = jittered(gi, gj, 0, cells)
+            ys[k] = jittered(gi, gj, 1, cells)
+            zs[k] = heights.height(xs[k], ys[k])
+        }
+        val salt = seed xor FACET_SALT xor (cells.toLong() shl 32)
+        for (j in 0 until side) for (i in 0 until side) {
+            val a = i + j * m
+            quad(b, xs, ys, zs, a, a + 1, a + m, a + m + 1, hash(salt, cx * cells + i, cy * cells + j))
+        }
+        // The fine border after the interior: point k of the outer ring at index m * m + k.
+        for (k in 0 until ringOut) {
+            val t = k % CELLS
+            val fi: Int
+            val fj: Int
+            when (k / CELLS) {
+                0 -> { fi = t; fj = 0 }
+                1 -> { fi = CELLS; fj = t }
+                2 -> { fi = CELLS - t; fj = CELLS }
+                else -> { fi = 0; fj = CELLS - t }
+            }
+            val gi = cx * CELLS + fi
+            val gj = cy * CELLS + fj
+            val o = m * m + k
+            xs[o] = jittered(gi, gj, 0, CELLS)
+            ys[o] = jittered(gi, gj, 1, CELLS)
+            zs[o] = heights.height(xs[o], ys[o])
+        }
+        fun inner(q: Int): Int {
+            val t = q % side
+            return when ((q % ringIn) / side) {
+                0 -> t
+                1 -> side + t * m
+                2 -> (side - t) + side * m
+                else -> (side - t) * m
+            }
+        }
+        fun outer(k: Int): Int = m * m + k % ringOut
+        var a = 0
+        var c = 0
+        while (a < ringOut || c < ringIn) {
+            // Advance the ring whose next point comes first along the perimeter (outer first on a tie, so corners line up).
+            val h = hash(salt xor STITCH_SALT, cx * ringOut + a, cy * ringIn + c)
+            if (c >= ringIn || (a < ringOut && (a + 1).toLong() * side <= (c + 1).toLong() * CELLS)) {
+                soilTri(b, xs, ys, zs, outer(a), outer(a + 1), inner(c), h ushr 8)
+                a++
+            } else {
+                soilTri(b, xs, ys, zs, outer(a), inner(c + 1), inner(c), h ushr 8)
+                c++
+            }
+        }
+        return b.build()
+    }
+
+    /**
+     * Two soil facets over the cell with corners a (south-west), c (south-east), d (north-west) and e
+     * (north-east), split along the diagonal that deviates less from the height field. Returns true
+     * for the a-e split (a, c, e + a, e, d), false for c-d (a, c, d + c, e, d).
+     */
+    private fun quad(b: MeshBuilder, xs: FloatArray, ys: FloatArray, zs: FloatArray, a: Int, c: Int, d: Int, e: Int, h: Long): Boolean {
+        val ae = max(triDeviation(xs, ys, zs, a, c, e), triDeviation(xs, ys, zs, a, e, d))
+        val cd = max(triDeviation(xs, ys, zs, a, c, d), triDeviation(xs, ys, zs, c, e, d))
+        if (ae <= cd) {
+            soilTri(b, xs, ys, zs, a, c, e, h ushr 8)
+            soilTri(b, xs, ys, zs, a, e, d, h ushr 20)
+        } else {
+            soilTri(b, xs, ys, zs, a, c, d, h ushr 8)
+            soilTri(b, xs, ys, zs, c, e, d, h ushr 20)
+        }
+        return ae <= cd
     }
 
     private val ico1 = Icosphere.build(1)
@@ -81,35 +171,42 @@ class ChunkMesher(private val seed: Long) {
     private val ico3 by lazy { Icosphere.build(3) }
     private val ico4 by lazy { Icosphere.build(4) }
 
-    /** Smooth-shaded rocks: each vertex of an icosphere moved (from the rock ellipsoid) onto the rock's own surface, normals from its gradient. */
-    fun rocks(blobs: List<Blob>): MeshData {
-        val b = MeshBuilder(blobs.size * 1280 * 3 + 16)
+    /**
+     * Smooth-shaded rocks as indexed meshes: each vertex of an icosphere moved (from the rock
+     * ellipsoid) onto the rock's own surface, normals from its gradient, shared by the triangles
+     * around it. A part holds at most [MeshData.MAX_INDEXED_VERTICES] vertices (16-bit indices), so
+     * a chunk with many large rocks yields several parts; no rocks yield none.
+     */
+    fun rocks(blobs: List<Blob>): List<MeshData> {
+        val parts = ArrayList<MeshData>(1)
+        var b = MeshBuilder(1024)
         val p = FloatArray(3)
         val n = FloatArray(3)
         for (blob in blobs) {
             val level = rockSubdivision(blob.reach)
             val (verts, tris) = when (level) { 1 -> ico1; 2 -> ico2; 3 -> ico3; else -> ico4 }
+            val count = verts.size / 3
+            if (b.vertexCount + count > MeshData.MAX_INDEXED_VERTICES) {
+                parts += b.build()
+                b = MeshBuilder(1024)
+            }
+            val base = b.vertexCount
             // Flat facets sag inside a convex rock; half the chord sag outward makes them straddle the surface.
             val edgeAngle = ICOSAHEDRON_EDGE_ANGLE / (1 shl level)
             val inflate = 0.5f * blob.reach * (1f - cos(edgeAngle / 2f))
-            val pos = FloatArray(verts.size)
-            val nor = FloatArray(verts.size)
-            for (k in 0 until verts.size / 3) {
+            val f = rockShade(blob)
+            for (k in 0 until count) {
                 p[0] = blob.cx + verts[k * 3] * blob.rx
                 p[1] = blob.cy + verts[k * 3 + 1] * blob.ry
                 p[2] = blob.cz + verts[k * 3 + 2] * blob.rz
                 projectOnto(blob, p, n)
                 p[0] += n[0] * inflate; p[1] += n[1] * inflate; p[2] += n[2] * inflate
-                p.copyInto(pos, k * 3)
-                n.copyInto(nor, k * 3)
+                b.vertex(p[0], p[1], p[2], n[0], n[1], n[2], STONE_R * f, STONE_G * f, STONE_B * f)
             }
-            val f = rockShade(blob)
-            for (t in tris.indices step 3) for (c in 0 until 3) {
-                val k = tris[t + c] * 3
-                b.vertex(pos[k], pos[k + 1], pos[k + 2], nor[k], nor[k + 1], nor[k + 2], STONE_R * f, STONE_G * f, STONE_B * f)
-            }
+            for (t in tris) b.index(base + t)
         }
-        return b.build()
+        if (b.vertexCount > 0) parts += b.build()
+        return parts
     }
 
     /** Icosphere subdivision for a rock of [reach] mm: finer for bigger rocks so the facet sag stays small. */
@@ -275,11 +372,16 @@ class ChunkMesher(private val seed: Long) {
         }
     }
 
-    /** Coordinate [axis] (0 x, 1 y) of global grid vertex (gi, gj), jittered by a quarter cell, clamped to the map. */
-    private fun jittered(gi: Int, gj: Int, axis: Int): Float {
-        val base = (if (axis == 0) gi else gj) * CELL_MM
-        val h = hash(seed xor JITTER_SALT, gi * 2 + axis, gj)
-        val j = (((h ushr 11) and 0xFFFF).toFloat() / 0xFFFF - 0.5f) * 0.5f * CELL_MM
+    /**
+     * Coordinate [axis] (0 x, 1 y) of global vertex (gi, gj) of the grid with [cells] cells per
+     * chunk, jittered by a quarter cell, clamped to the map. A function of the vertex and level only.
+     */
+    private fun jittered(gi: Int, gj: Int, axis: Int, cells: Int): Float {
+        val cellMm = CHUNK_MM.toFloat() / cells
+        val base = (if (axis == 0) gi else gj) * cellMm
+        val salt = if (cells == CELLS) JITTER_SALT else JITTER_SALT xor (cells.toLong() shl 32)
+        val h = hash(seed xor salt, gi * 2 + axis, gj)
+        val j = (((h ushr 11) and 0xFFFF).toFloat() / 0xFFFF - 0.5f) * 0.5f * cellMm
         return (base + j).coerceIn(0f, SURFACE_MM.toFloat())
     }
 
@@ -330,7 +432,11 @@ class ChunkMesher(private val seed: Long) {
     }
 
     companion object {
+        /** Cells per chunk side at the fine level (near the focus). */
         const val CELLS = 48
+
+        /** Cells per chunk side at the coarse level (the outer ring); its border still follows the fine grid. */
+        const val COARSE_CELLS = 16
         const val CELL_MM = CHUNK_MM.toFloat() / CELLS
         const val SPECK_LIFT = 0.05f
         private const val DEV_LATTICE = 6
@@ -343,6 +449,7 @@ class ChunkMesher(private val seed: Long) {
         const val SOIL_B = 62f / 255f
         private const val FACET_SALT = 0x5011L
         private const val JITTER_SALT = 0x717L
+        private const val STITCH_SALT = 0x5717L
         private const val SPECK_SALT = 0x5BECL
         const val PEBBLE_REACH = 6f
         /** Reach from which rocks get the finest icosphere (5,120 triangles). */

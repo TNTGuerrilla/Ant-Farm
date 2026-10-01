@@ -7,6 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertTrue
 
+/** The fine level ([ChunkMesher.CELLS]) is the default; the coarse level has its own tests at the end. */
 class GroundMeshTest {
     private val cx = 8
     private val cy = 8
@@ -163,6 +164,70 @@ class GroundMeshTest {
             val wx = v[i + 18] - v[i]; val wy = v[i + 19] - v[i + 1]
             assertTrue(ux * wy - uy * wx >= 0f, "$kind triangle at vertex ${i / MeshData.STRIDE} is clockwise from above")
             i += 3 * MeshData.STRIDE
+        }
+    }
+
+    @Test
+    fun aCoarseChunkHasAboutANinthOfTheTrianglesAndSitsOnTheGround() {
+        val m = ChunkMesher(4)
+        val fine = m.ground(cx, cy)
+        val coarse = m.ground(cx, cy, ChunkMesher.COARSE_CELLS)
+        val fineTris = ChunkMesher.CELLS * ChunkMesher.CELLS * 2
+        // 14 by 14 interior cells (392 triangles) plus the 4 * (48 + 14) stitching triangles to the fine border
+        val ratio = coarse.triangleCount.toFloat() / fineTris
+        println("GROUND coarse ${coarse.triangleCount} triangles against fine $fineTris (ratio $ratio, fine with specks ${fine.triangleCount})")
+        assertTrue(ratio in 0.10f..0.16f, "coarse/fine triangle ratio $ratio")
+        val v = coarse.vertices
+        var i = 0
+        while (i < v.size) {
+            val h = m.heights.height(v[i], v[i + 1])
+            assertTrue(abs(v[i + 2] - h) < 1e-3f, "coarse vertex (${v[i]}, ${v[i + 1]}, ${v[i + 2]}) is ${v[i + 2] - h} from the ground")
+            i += MeshData.STRIDE
+        }
+    }
+
+    @Test
+    fun aCoarseChunkFacesUpAndHasNoSpecks() {
+        val v = ChunkMesher(4).ground(cx, cy, ChunkMesher.COARSE_CELLS).vertices
+        val s = ChunkMesher.COARSE_CELLS - 2
+        assertTrue(v.size / MeshData.STRIDE == (s * s * 2 + 4 * s + 4 * ChunkMesher.CELLS) * 3, "a coarse chunk is soil facets only")
+        var area = 0.0
+        var i = 0
+        while (i < v.size) {
+            assertTrue(v[i + 5] > 0f, "coarse triangle at vertex ${i / MeshData.STRIDE} has nz ${v[i + 5]}")
+            val ux = v[i + 9] - v[i]; val uy = v[i + 10] - v[i + 1]
+            val wx = v[i + 18] - v[i]; val wy = v[i + 19] - v[i + 1]
+            val cross = ux * wy - uy * wx
+            assertTrue(cross > 0f, "coarse triangle at vertex ${i / MeshData.STRIDE} is clockwise or degenerate from above")
+            area += cross / 2.0
+            i += 3 * MeshData.STRIDE
+        }
+        // no overlaps or holes: the facets cover the chunk once (its jittered border makes it differ slightly from the square)
+        val square = CHUNK_MM.toDouble() * CHUNK_MM
+        assertTrue(abs(area - square) < square * 0.01, "coarse facets cover $area mm2 of a $square mm2 chunk")
+    }
+
+    @Test
+    fun aCoarseChunkMeetsItsFineNeighbourExactly() {
+        val m = ChunkMesher(4)
+        val edge = (cx + 1) * CHUNK_MM.toFloat()
+        fun edgePoints(v: FloatArray): Set<Triple<Float, Float, Float>> {
+            val out = HashSet<Triple<Float, Float, Float>>()
+            var i = 0
+            while (i < v.size) {
+                if (abs(v[i] - edge) < ChunkMesher.CELL_MM / 3f) out += Triple(v[i], v[i + 1], v[i + 2])
+                i += MeshData.STRIDE
+            }
+            return out
+        }
+        for ((left, right) in listOf(ChunkMesher.CELLS to ChunkMesher.COARSE_CELLS, ChunkMesher.COARSE_CELLS to ChunkMesher.CELLS, ChunkMesher.COARSE_CELLS to ChunkMesher.COARSE_CELLS)) {
+            val a = edgePoints(m.ground(cx, cy, left).vertices)
+            val b = edgePoints(m.ground(cx + 1, cy, right).vertices)
+            val coarseSide = if (left == ChunkMesher.COARSE_CELLS) a else b
+            val other = if (left == ChunkMesher.COARSE_CELLS) b else a
+            // the coarse chunk's border is the fine grid's edge column (49 vertices), identical on both sides
+            assertTrue(coarseSide.size == ChunkMesher.CELLS + 1, "coarse edge has ${coarseSide.size} vertices")
+            assertTrue(other.containsAll(coarseSide), "levels $left and $right do not meet")
         }
     }
 }

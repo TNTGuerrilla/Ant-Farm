@@ -13,12 +13,22 @@ class RockFoodMeshTest {
     private val pebble = Blob(4000f, 4000f, 2f, 4f, 3.5f, 2.5f, 0.12f, 1.3f)
     private val rock = Blob(4100f, 4000f, 8f, 30f, 24f, 18f, 0.15f, 4.1f)
 
+    /** The rock mesh of [blob] read through its index buffer: three vertices per triangle, as a non-indexed mesh would hold them. */
+    private fun ChunkMesher.rockTriangles(blob: Blob): FloatArray {
+        val d = rocks(listOf(blob)).single()
+        val idx = d.indices!!
+        val s = MeshData.STRIDE
+        val out = FloatArray(idx.size * s)
+        for (t in idx.indices) d.vertices.copyInto(out, t * s, (idx[t].toInt() and 0xFFFF) * s, (idx[t].toInt() and 0xFFFF) * s + s)
+        return out
+    }
+
     @Test
     fun rockVerticesLieOnTheirRock() {
         val m = ChunkMesher(4)
         var worst = 0f
         for (b in listOf(pebble, rock)) {
-            val v = m.rocks(listOf(b)).vertices
+            val v = m.rocks(listOf(b)).single().vertices
             var i = 0
             while (i < v.size) {
                 val d = b.distance(v[i], v[i + 1], v[i + 2])
@@ -34,7 +44,7 @@ class RockFoodMeshTest {
     fun rockTrianglesFaceOutward() {
         val m = ChunkMesher(4)
         for (b in listOf(pebble, rock)) {
-            val v = m.rocks(listOf(b)).vertices
+            val v = m.rockTriangles(b)
             val s = MeshData.STRIDE
             var i = 0
             while (i < v.size) {
@@ -55,10 +65,13 @@ class RockFoodMeshTest {
     @Test
     fun rocksAreSmoothAndSizedByReach() {
         val m = ChunkMesher(4)
-        val small = m.rocks(listOf(pebble))
-        val big = m.rocks(listOf(rock))
-        assertEquals(80 * 3, small.vertexCount)
-        assertEquals(1280 * 3, big.vertexCount)
+        val small = m.rocks(listOf(pebble)).single()
+        val big = m.rocks(listOf(rock)).single()
+        // indexed: one vertex per icosphere vertex, three indices per triangle
+        assertEquals(42, small.vertexCount)
+        assertEquals(80 * 3, small.indexCount)
+        assertEquals(642, big.vertexCount)
+        assertEquals(1280 * 3, big.indexCount)
         // smooth: a vertex's normal points away from the rock centre and is unit length
         val v = big.vertices
         val nx = v[3]; val ny = v[4]; val nz = v[5]
@@ -71,7 +84,7 @@ class RockFoodMeshTest {
         val big = Blob(4300f, 4000f, 40f, 90f, 75f, 50f, 0.15f, 7.7f)
         val m = ChunkMesher(4)
         for (b in listOf(rock, big)) {
-            val v = m.rocks(listOf(b)).vertices
+            val v = m.rockTriangles(b)
             val s = MeshData.STRIDE
             val ds = ArrayList<Float>()
             val lattice = 6
@@ -93,6 +106,22 @@ class RockFoodMeshTest {
             assertTrue(p1 >= -0.5f && p99 <= 0.3f, "p1 $p1 p99 $p99 outside [-0.5, 0.3] for reach ${b.reach}")
             assertTrue(ds.first() >= -1.0f && ds.last() <= 0.5f, "min ${ds.first()} max ${ds.last()} outside [-1.0, 0.5] for reach ${b.reach}")
         }
+    }
+
+    @Test
+    fun manyLargeRocksSplitIntoPartsWithSixteenBitIndices() {
+        val m = ChunkMesher(4)
+        // 30 large rocks of 2,562 vertices each: 76,860 vertices, more than one 16-bit part holds
+        val blobs = List(30) { Blob(1000f + it * 200f, 4000f, 40f, 90f, 75f, 50f, 0.15f, 7.7f) }
+        val parts = m.rocks(blobs)
+        assertTrue(parts.size >= 2, "expected a split, got ${parts.size} part(s)")
+        assertEquals(30 * 2562, parts.sumOf { it.vertexCount })
+        assertEquals(30 * 5120 * 3, parts.sumOf { it.indexCount })
+        for (p in parts) {
+            assertTrue(p.vertexCount <= MeshData.MAX_INDEXED_VERTICES)
+            for (i in p.indices!!) assertTrue((i.toInt() and 0xFFFF) < p.vertexCount)
+        }
+        assertTrue(m.rocks(emptyList()).isEmpty())
     }
 
     @Test

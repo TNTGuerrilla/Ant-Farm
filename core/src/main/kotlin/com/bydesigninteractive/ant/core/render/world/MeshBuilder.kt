@@ -2,12 +2,25 @@ package com.bydesigninteractive.ant.core.render.world
 
 import kotlin.math.sqrt
 
-/** Triangles for the world shader as interleaved floats: x, y, z, nx, ny, nz, r, g, b per vertex (mm, linear RGB). */
-class MeshData(val vertices: FloatArray) {
+/**
+ * Triangles for the world shader as interleaved floats: x, y, z, nx, ny, nz, r, g, b per vertex (mm,
+ * linear RGB). Without [indices] every three vertices are one triangle (flat shading); with them,
+ * every three indices are one triangle over shared vertices (smooth shading). Indices are unsigned
+ * 16-bit values stored in a [ShortArray] (read them with `toInt() and 0xFFFF`), so an indexed mesh
+ * holds at most [MAX_INDEXED_VERTICES] vertices.
+ */
+class MeshData(val vertices: FloatArray, val indices: ShortArray? = null) {
     val vertexCount: Int get() = vertices.size / STRIDE
+
+    /** The number of indices, or 0 for a non-indexed mesh. */
+    val indexCount: Int get() = indices?.size ?: 0
+
+    /** The number of triangles drawn. */
+    val triangleCount: Int get() = (indices?.size ?: vertexCount) / 3
 
     companion object {
         const val STRIDE = 9
+        const val MAX_INDEXED_VERTICES = 65536
     }
 }
 
@@ -15,6 +28,8 @@ class MeshData(val vertices: FloatArray) {
 class MeshBuilder(initialVertices: Int = 1024) {
     private var v = FloatArray(initialVertices * MeshData.STRIDE)
     private var size = 0
+    private var idx: ShortArray? = null
+    private var indexSize = 0
 
     val vertexCount: Int get() = size / MeshData.STRIDE
 
@@ -40,5 +55,13 @@ class MeshBuilder(initialVertices: Int = 1024) {
         vertex(cx, cy, cz, nx, ny, nz, r, g, b)
     }
 
-    fun build(): MeshData = MeshData(v.copyOf(size))
+    /** Appends one index (an earlier vertex, below [MeshData.MAX_INDEXED_VERTICES]); a builder given any index builds an indexed mesh. */
+    fun index(i: Int) {
+        require(i in 0 until MeshData.MAX_INDEXED_VERTICES) { "index $i does not fit 16 bits" }
+        var a = idx ?: ShortArray(1024).also { idx = it }
+        if (indexSize == a.size) { a = a.copyOf(a.size * 2); idx = a }
+        a[indexSize++] = i.toShort()
+    }
+
+    fun build(): MeshData = MeshData(v.copyOf(size), idx?.copyOf(indexSize))
 }
