@@ -15,18 +15,22 @@ class GroundMeshTest {
     fun groundVerticesSitOnTheGround() {
         val m = ChunkMesher(4)
         val v = m.ground(cx, cy).vertices
-        var ground = 0
+        val groundVertices = ChunkMesher.CELLS * ChunkMesher.CELLS * 6
         var i = 0
         while (i < v.size) {
             val x = v[i]
             val y = v[i + 1]
             val z = v[i + 2]
             val h = m.heights.height(x, y)
-            // ground vertices lie on the height field; speck vertices lie just above it
-            assertTrue(z - h >= -0.2f && z - h <= 0.2f, "vertex ($x, $y, $z) is ${z - h} from the ground")
-            if (abs(z - h) < 1e-3f) ground++
+            if (i / MeshData.STRIDE < groundVertices) {
+                assertTrue(abs(z - h) < 1e-3f, "ground vertex ($x, $y, $z) is ${z - h} from the ground")
+            } else {
+                // specks follow the drawn facets (within 1 mm of the ground) plus their 0.05 mm lift
+                assertTrue(abs(z - h) <= 1.05f, "speck vertex ($x, $y, $z) is ${z - h} from the ground")
+            }
             i += MeshData.STRIDE
         }
+        val ground = groundVertices
         assertTrue(ground > 1000)
     }
 
@@ -34,13 +38,17 @@ class GroundMeshTest {
     fun flatFacetsStayWithinOneMillimetreOfTheGround() {
         val m = ChunkMesher(4)
         val v = m.ground(cx, cy).vertices
+        val groundVertices = ChunkMesher.CELLS * ChunkMesher.CELLS * 6
+        val n = 6
         var worst = 0f
         var i = 0
-        while (i < v.size) {
+        while (i < groundVertices * MeshData.STRIDE) {
             val ax = v[i]; val ay = v[i + 1]; val az = v[i + 2]
             val bx = v[i + 9]; val by = v[i + 10]; val bz = v[i + 11]
             val qx = v[i + 18]; val qy = v[i + 19]; val qz = v[i + 20]
-            for ((u, w) in listOf(0.33f to 0.33f, 0.5f to 0.25f, 0.25f to 0.5f, 0.5f to 0.5f, 0.5f to 0f, 0f to 0.5f)) {
+            for (p in 0..n) for (q in 0..n - p) {
+                val u = p.toFloat() / n
+                val w = q.toFloat() / n
                 val x = ax + (bx - ax) * u + (qx - ax) * w
                 val y = ay + (by - ay) * u + (qy - ay) * w
                 val z = az + (bz - az) * u + (qz - az) * w
@@ -48,8 +56,52 @@ class GroundMeshTest {
             }
             i += 3 * MeshData.STRIDE
         }
-        println("GROUND worst facet deviation: $worst mm")
-        assertTrue(worst <= 1.2f, "worst facet deviation $worst mm (specks sit 0.05 mm up, so allow them)")
+        println("GROUND worst facet deviation (ground only): $worst mm")
+        assertTrue(worst <= 1.0f, "worst ground facet deviation $worst mm")
+    }
+
+    @Test
+    fun specksSitOnTheDrawnFacets() {
+        val m = ChunkMesher(4)
+        val v = m.ground(cx, cy).vertices
+        val groundVertices = ChunkMesher.CELLS * ChunkMesher.CELLS * 6
+        // plane of every ground triangle; a speck vertex must sit 0.05 mm above one of them
+        var checked = 0
+        var i = groundVertices * MeshData.STRIDE
+        while (i < v.size) {
+            val x = v[i]; val y = v[i + 1]; val z = v[i + 2]
+            var best = Float.MAX_VALUE
+            var bestInside = -Float.MAX_VALUE
+            var t = 0
+            while (t < groundVertices * MeshData.STRIDE) {
+                val ax = v[t]; val ay = v[t + 1]; val az = v[t + 2]
+                if (abs(ax - x) < 30f && abs(ay - y) < 30f) {
+                    val bx = v[t + 9]; val by = v[t + 10]; val bz = v[t + 11]
+                    val cx2 = v[t + 18]; val cy2 = v[t + 19]; val cz2 = v[t + 20]
+                    val det = (bx - ax) * (cy2 - ay) - (by - ay) * (cx2 - ax)
+                    if (abs(det) > 1e-9f) {
+                        val l1 = ((x - ax) * (cy2 - ay) - (y - ay) * (cx2 - ax)) / det
+                        val l2 = ((bx - ax) * (y - ay) - (by - ay) * (x - ax)) / det
+                        // barycentric with a small tolerance (chunk-edge specks may lie just outside the jittered mesh)
+                        val l0 = 1f - l1 - l2
+                        val inside = minOf(l0, l1, l2)
+                        // the facet that contains the point best (or, at the jittered chunk edge, is nearest to it)
+                        if (inside > -0.02f && inside > bestInside) {
+                            bestInside = inside
+                            best = abs(z - (az * l0 + bz * l1 + cz2 * l2))
+                        }
+                    }
+                }
+                t += 3 * MeshData.STRIDE
+            }
+            val lift = best
+            if (best < Float.MAX_VALUE) {
+                assertTrue(abs(lift - ChunkMesher.SPECK_LIFT) <= 0.01f, "speck vertex ($x, $y, $z) is $lift from the nearest facet")
+                checked++
+            }
+            i += MeshData.STRIDE
+        }
+        assertTrue(checked > 20, "only $checked speck vertices were checked")
     }
 
     @Test
