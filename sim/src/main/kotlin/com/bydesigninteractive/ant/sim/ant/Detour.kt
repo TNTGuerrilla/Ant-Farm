@@ -3,6 +3,8 @@ package com.bydesigninteractive.ant.sim.ant
 import com.bydesigninteractive.ant.sim.DT
 import com.bydesigninteractive.ant.sim.World
 import kotlin.math.PI
+import kotlin.math.min
+import kotlin.math.pow
 
 /**
  * Obstacle detours for directed walking. Steering straight at a target projected into the
@@ -11,6 +13,10 @@ import kotlin.math.PI
  * when the horizontal distance to the target has not dropped by `detourProgressMm` within
  * `detourStallSeconds`, the ant turns about 90 degrees to a random side and walks a run of
  * exponential length (mean `detourRunMm`) by the normal walking rules, then steers again.
+ * Consecutive detours for the same target escalate: the mean doubles each time (up to
+ * `detourRunCapMm`) and the turn widens toward 135 degrees. The count resets when the target
+ * changes, when tracking restarts, or when the ant gets `detourResetMm` closer than it was at
+ * the first stall.
  *
  * Used where an ant re-aims at its target every tick: a forager heading for a plant, and a
  * forager or digger heading for the entrance in sight. Homing by the path integration vector
@@ -24,6 +30,7 @@ internal object Detour {
     const val NEST_SIGHT = -1
 
     private const val QUARTER_TURN = (PI / 2).toFloat()
+    private const val MAX_TURN = (PI * 3 / 4).toFloat() // 135 degrees
 
     /**
      * Tracks progress toward target [key], now [dist] mm away horizontally. Returns true while
@@ -37,6 +44,7 @@ internal object Detour {
             a.detourMark = dist
             a.detourTimer = 0f
             a.detourLeft = 0f
+            a.detourCount = 0
         }
         a.detourTick = w.tick
         if (a.detourLeft > 0f) {
@@ -51,12 +59,20 @@ internal object Detour {
         if (dist <= a.detourMark - p.detourProgressMm) {
             a.detourMark = dist
             a.detourTimer = 0f
+            // Real progress (well past where the first stall was) ends the escalation.
+            if (a.detourCount > 0 && dist <= a.detourBase - p.detourResetMm) a.detourCount = 0
             return false
         }
         a.detourTimer += DT
         if (a.detourTimer < p.detourStallSeconds) return false
-        SurfaceWalk.turn(a, if (w.rng.nextBoolean()) QUARTER_TURN else -QUARTER_TURN)
-        a.detourLeft = w.exponential(p.detourRunMm)
+        // Each further detour for the same target runs further and turns wider (90 toward 135
+        // degrees), so a rock too big for a short one is gone round, not re-entered.
+        if (a.detourCount == 0) a.detourBase = a.detourMark
+        val turn = min(MAX_TURN, QUARTER_TURN + a.detourCount * p.detourTurnStep)
+        SurfaceWalk.turn(a, if (w.rng.nextBoolean()) turn else -turn)
+        val mean = min(p.detourRunCapMm, p.detourRunMm * p.detourRunGrowth.pow(a.detourCount))
+        a.detourCount++
+        a.detourLeft = w.exponential(mean)
         a.runLeft = a.detourLeft
         a.detourTimer = 0f
         return true

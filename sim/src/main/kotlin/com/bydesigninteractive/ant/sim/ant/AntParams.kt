@@ -97,6 +97,14 @@ data class AntParams(
     val detourProgressMm: Float = 2f,
     val detourStallSeconds: Float = 2f,
     val detourRunMm: Float = 40f,
+    // Repeated detours for the same target escalate: the mean run is detourRunMm times
+    // detourRunGrowth per earlier detour, capped at detourRunCapMm, and the turn widens by
+    // detourTurnStep (radians) each time from 90 up to 135 degrees. The escalation ends when the
+    // ant gets detourResetMm closer than it was at the first stall.
+    val detourRunGrowth: Float = 2f,
+    val detourRunCapMm: Float = 320f,
+    val detourTurnStep: Float = 0.3927f,
+    val detourResetMm: Float = 20f,
     // Fields (section 5): weak trails decay 0.4% per second
     val trailDecay: Float = 0.004f,
     val trailDiffusion: Float = 0f,

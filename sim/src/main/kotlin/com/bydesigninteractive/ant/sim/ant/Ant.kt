@@ -59,6 +59,10 @@ class Ant(val id: Int, val role: Role, val desiredCrop: Float, val laysTrail: Bo
     var detourTimer = 0f
     var detourLeft = 0f
 
+    /** Consecutive detours for the same target, and the closest distance when the first began. */
+    var detourCount = 0
+    var detourBase = 0f
+
     // Nest walking: the cell the ant stands on and the one it is heading for.
     var cellX = 0
     var cellY = 0
