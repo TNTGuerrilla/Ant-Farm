@@ -27,7 +27,7 @@ These were decided with the owner. Do not re-litigate them.
 - Kotlin everywhere that ships. Gradle modules: `sim` (pure Kotlin core), `core` (libGDX rendering and UI), `desktop` (LWJGL3, jpackage .exe/.scr), `android` (`AndroidDaydream`). Python is for offline analysis only.
 - Lasius niger, as realistic as possible, in a wild setting.
 - Evolution between colonies through a regional gene pool. Learning is Baldwinian: the genome holds starting weights plus plasticity rules, and learned weights are never inherited.
-- Two clocks: real-time ant movement, and a compressed calendar (start at 10 real minutes per simulated day). Memory decay runs on the calendar clock.
+- Two clocks: real-time ant movement, and a compressed calendar of 60 real minutes per simulated day (changed from 10 on 2026-10-01). Memory decay runs on the calendar clock.
 - The simulation pauses while the screensaver is not running.
 - Camera: constant level of detail. Start close, ease out to a fixed comfortable zoom, then pan between points of interest as the nest grows. A minimap shows the whole nest.
 - Follower camera, newspaper-style event log with simulation dates, "while you were away" catch-up, counters by caste plus colony generation, and remote D-pad controls.

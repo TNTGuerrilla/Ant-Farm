@@ -32,7 +32,7 @@ libGDX's daydream backend is still maintained (1.14.1 fixed an input bug in it).
 ## 3. Time
 
 - **Behavior clock:** real time. Walking at about 20 mm/s, 3-minute foraging trips, pheromone decay.
-- **Calendar clock:** compressed. The starting point is 1 simulated day = 10 real minutes. It drives development, aging, lifespans, seasons, weather, day and night, and memory decay.
+- **Calendar clock:** compressed: 1 simulated day = 60 real minutes (changed from 10 by the owner on 2026-10-01, section 15). It drives development, aging, lifespans, seasons, weather, day and night, and memory decay.
 - **Winter** (4 to 5 months) is fast-forwarded with a short overwintering sequence. So is any empty-nest period.
 
 ## 4. World
@@ -218,3 +218,15 @@ M0 runs first because it is cheap and de-risks the TV. M1 to M7 are desktop-firs
 3. **Debris for a later milestone:** leaf litter, pine-needle-like twigs and similar objects that ants interact with and crawl over, to make the surface more interesting.
 4. **Trails are narrow.** Trail pheromone is laid in short streaks on the ground and followed by comparing two antennae a few millimeters apart, so the trail field stays about 1 to 3 cm wide (1 cm grid, small diffusion). Diffusion lost at the edge of an unallocated chunk is negligible at that width and is left as is.
 5. **M1 closed without a TV run.** The TV dream keeps the M0 stub until M1b.
+
+## 15. Decisions after the M1b-2c desktop look check (2026-10-01)
+
+1. **A simulated day lasts 60 real minutes**, for the whole calendar (light, development, seasons, memory decay), not 10. A year is about 365 hours of screensaver time.
+2. **Aphid plant stems are 25 to 60 cm tall** (were 50 to 120 cm).
+3. **Look adjustments in M1b-2c:** darker ants; a follow camera that eases into the ant's roll and pitch; no grass inside rocks; smoothed visible turning; ant sizes varying from 3 to 5 mm; a dark entrance hole with a divot; lighter nest tunnels; matching dirt colours, rocks and grass between the 3D and overhead views, with nothing cut off at chunk borders.
+4. **Backlog for their own design passes** (suggested placement):
+   - **Mound building (after M1b, before or with M3):** a visible mound that grows around the entrance, built the way Lasius niger really builds it (research where spoil is deposited and whether the mound grows from the inside out), shown on the surface and in the nest cross-section. Today spoil raises the ground by only 0.01 mm per pellet per square centimetre and diggers drop pellets up to 40 mm out by a chance rule.
+   - **Nest architecture (M3):** slanted and curved tunnels, dips and rises, chambers of different kinds, instead of the scripted rectangular plan.
+   - **Per-ant collision (with M2 or its own milestone):** ants block each other, queue at aphids, find gaps or wait, and occasionally climb over one another; it changes behaviour, calibration and TV cost.
+   - **Speed varying with size (M3):** per-ant speed linked to the 3 to 5 mm size range.
+   - **Weather and a short winter scene (M5 or later):** the sky state is built to be driven by it.
