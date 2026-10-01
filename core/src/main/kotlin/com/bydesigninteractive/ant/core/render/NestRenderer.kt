@@ -121,11 +121,11 @@ class NestRenderer(
 
     private companion object {
         const val BUILDS_PER_FRAME = 16
-        /** Dug tunnels: a warm light tan (about 200/166/122), so the near-black ants stand out clearly. */
-        val AIR = Color(0.784f, 0.651f, 0.478f, 1f)
+        /** Dug tunnels: a medium-dark brown (about 108/82/60), darker than the soil but lighter than the near-black ants. */
+        val AIR = Color(0.424f, 0.322f, 0.235f, 1f)
 
-        /** Undisturbed soil: the surface soil's family (139/98/62), a little darker and cooler (about 112/84/62). */
-        val SOIL = Color(0.439f, 0.329f, 0.243f, 1f)
+        /** Undisturbed soil: the surface soil's family (139/98/62), a little lighter and cooler (about 160/122/88), so tunnels read as darker. */
+        val SOIL = Color(0.627f, 0.478f, 0.345f, 1f)
         val CLAY = Color(0.52f, 0.35f, 0.24f, 1f)
 
         /** The 3D view's stone grey (128/124/116). */
