@@ -15,5 +15,6 @@ fun fingerprint(w: World): String {
     }
     val draw = w.rng.nextLong()
     return "sum=$sum trail=${w.surface.trail.blockCount()} home=${w.surface.homeScent.blockCount()} " +
+        "trailMax=${w.surface.trail.max()} homeMax=${w.surface.homeScent.max()} " +
         "feeds=${w.feedEvents.size} unloads=${w.unloads} ants=${w.ants.size} rng=$draw"
 }

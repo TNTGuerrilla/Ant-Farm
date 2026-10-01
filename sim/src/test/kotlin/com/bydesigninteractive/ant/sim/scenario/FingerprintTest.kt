@@ -40,7 +40,7 @@ class FingerprintTest {
 
     // Recorded in M1b-2b Task 1 from the code before any cost cut.
     private companion object {
-        const val STARTER = "sum=562502.7129050037 trail=5 home=86 feeds=3 unloads=0 ants=80 rng=6106405437895412435"
-        const val COLONY = "sum=7229087.009711433 trail=0 home=34 feeds=0 unloads=0 ants=1000 rng=-6800254765937369305"
+        const val STARTER = "sum=562502.7129050037 trail=5 home=86 trailMax=0.6638047 homeMax=0.7872241 feeds=3 unloads=0 ants=80 rng=6106405437895412435"
+        const val COLONY = "sum=7229087.009711433 trail=0 home=34 trailMax=0.0 homeMax=2.458601 feeds=0 unloads=0 ants=1000 rng=-6800254765937369305"
     }
 }
