@@ -28,6 +28,15 @@ package com.bydesigninteractive.ant.sim.ant
  *     busier-source share 0.68, 0.91, 0.76, 0.84, 3 seeds at 0.7 or more (3 needed).
  *   - Crowded switch: loser share 0.76, 0.22, 0.84, 0.67, 3 seeds at 0.5 or more (3 needed).
  *   Margins are thin: two checks have no spare seed.
+ * - crowdLevel 2 (from 3): recalibrated in M1b-2b Task 8, when the open-ground fast path put
+ *   ants on the height grid from one sample and the crowded switch fell to 2 of 4 (loser share
+ *   0.89, 0.26, 0.91, 0.41). Tried one knob at a time: saturationLevel 7 left it at 2 of 4
+ *   (0.83, 0.23, 0.77, 0.44); crowdLevel 2 alone passes. Final values, seeds 1 to 4:
+ *   - 30 foragers: following 0.004, 0.031, 0.001, 0.036, mean 0.018 against a 0.15 limit.
+ *   - 150 foragers: following 0.454, 0.343, 0.433, 0.315, mean 0.386 against a 0.3 limit;
+ *     busier-source share 0.80, 0.87, 0.72, 0.86, all 4 seeds at 0.7 or more (3 needed).
+ *   - Crowded switch: loser share 0.63, 0.23, 0.91, 0.65, 3 seeds at 0.5 or more (3 needed).
+ *   The crowded switch still has no spare seed.
  * - maxFollow 0.7 (from 0.66): a slightly higher ceiling on joining a trail.
  * - exitChoiceExponent 3 (from 2): a steeper choice among trails at the exit, so the colony
  *   breaks symmetry between equal sources.
@@ -64,7 +73,7 @@ data class AntParams(
     val markAmount: Float = 2.25f,
     val saturationLevel: Float = 10f,
     val crowdRadius: Float = 10f,
-    val crowdLevel: Int = 3,
+    val crowdLevel: Int = 2,
     val nonLayerFraction: Float = 0.14f,
     val desiredMin: Float = 0.3f,
     val desiredMax: Float = 0.9f,

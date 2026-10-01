@@ -60,6 +60,7 @@ class World(
     // Scratch vectors for surface walking (one simulation thread).
     internal val pos = FloatArray(3)
     internal val norm = FloatArray(3)
+    internal val slope = FloatArray(2)
 
     // cos and sin of the antenna angles, left (+senseAngle) then right (-senseAngle), computed once.
     internal val senseCos = floatArrayOf(cos(params.senseAngle), cos(-params.senseAngle))

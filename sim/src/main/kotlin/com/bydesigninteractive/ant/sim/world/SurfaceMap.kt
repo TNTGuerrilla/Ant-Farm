@@ -7,7 +7,7 @@ import com.bydesigninteractive.ant.sim.world.sdf.HeightField
 import com.bydesigninteractive.ant.sim.world.sdf.SurfaceSdf
 import java.util.Random
 import kotlin.math.PI
-import kotlin.math.hypot
+import kotlin.math.sqrt
 
 /** The surface map is 8 x 8 m with the nest entrance in the middle (reference section 13). */
 const val SURFACE_MM = 8000
@@ -119,7 +119,9 @@ class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean
         for (i in foods.indices) {
             val f = foods[i]
             if (f.hasStem) continue
-            val gap = hypot(f.x - x, f.y - y) - f.radius
+            val dx = f.x - x
+            val dy = f.y - y
+            val gap = sqrt(dx * dx + dy * dy) - f.radius
             if (gap <= bestGap) {
                 bestGap = gap
                 best = f
@@ -135,7 +137,9 @@ class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean
         for (i in foods.indices) {
             val f = foods[i]
             if (!f.hasStem) continue
-            val gap = hypot(f.x - x, f.y - y)
+            val dx = f.x - x
+            val dy = f.y - y
+            val gap = sqrt(dx * dx + dy * dy)
             if (gap <= bestGap) {
                 bestGap = gap
                 best = f

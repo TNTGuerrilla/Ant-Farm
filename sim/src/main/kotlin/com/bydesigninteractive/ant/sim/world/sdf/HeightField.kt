@@ -75,7 +75,7 @@ class HeightField(private val seed: Long, private val spoil: ChunkedField) {
      * The same value as [height], with dh/dx and dh/dy of the bilinear patches under (x, y) into
      * out[0] and out[1]. The slope is 0 along an axis where (x, y) lies beyond the map edge.
      */
-    private fun heightAndSlope(x: Float, y: Float, out: FloatArray): Float {
+    internal fun heightAndSlope(x: Float, y: Float, out: FloatArray): Float {
         samples++
         val cx = x.coerceIn(0f, MAX)
         val cy = y.coerceIn(0f, MAX)

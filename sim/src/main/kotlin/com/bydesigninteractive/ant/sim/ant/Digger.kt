@@ -6,7 +6,7 @@ import com.bydesigninteractive.ant.sim.world.DistanceMap
 import com.bydesigninteractive.ant.sim.world.Material
 import kotlin.math.abs
 import kotlin.math.atan2
-import kotlin.math.hypot
+import kotlin.math.sqrt
 
 /**
  * The scripted digger: when the colony needs room it walks to the frontier, digs one cell into
@@ -79,7 +79,7 @@ internal object Digger {
         val s = w.surface
         val ox = a.x - s.entranceX
         val oy = a.y - s.entranceY
-        val dist = hypot(ox, oy)
+        val dist = sqrt(ox * ox + oy * oy)
         if (dist > p.entranceRadius + 3f) {
             val rate = p.spoilDropBase + p.spoilDropPerPellet * s.spoil.get(a.x, a.y)
             if (dist >= p.spoilMaxDistance || w.rng.nextFloat() < rate * DT) {
@@ -100,7 +100,7 @@ internal object Digger {
         val s = w.surface
         val dx = s.entranceX - a.x
         val dy = s.entranceY - a.y
-        if (hypot(dx, dy) <= p.entranceRadius) {
+        if (sqrt(dx * dx + dy * dy) <= p.entranceRadius) {
             w.enterNest(a)
             a.state = AntState.IDLE
             return

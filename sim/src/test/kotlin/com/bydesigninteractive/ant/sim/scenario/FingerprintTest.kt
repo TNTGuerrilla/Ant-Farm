@@ -38,9 +38,9 @@ class FingerprintTest {
         kotlin.test.assertTrue(profile.sdfEvaluations > 0L)
     }
 
-    // Recorded in M1b-2b Task 1 from the code before any cost cut.
+    // Recorded in M1b-2b Task 8, after the open-ground fast path (tier 2).
     private companion object {
-        const val STARTER = "sum=562502.7129050037 trail=5 home=86 trailMax=0.6638047 homeMax=0.7872241 feeds=3 unloads=0 ants=80 rng=6106405437895412435"
-        const val COLONY = "sum=7229087.009711433 trail=0 home=34 trailMax=0.0 homeMax=2.458601 feeds=0 unloads=0 ants=1000 rng=-6800254765937369305"
+        const val STARTER = "sum=550593.5773532048 trail=5 home=84 trailMax=0.6434383 homeMax=0.77056533 feeds=3 unloads=0 ants=80 rng=7019582404308401067"
+        const val COLONY = "sum=7229040.3433115 trail=0 home=34 trailMax=0.0 homeMax=2.4585316 feeds=0 unloads=0 ants=1000 rng=-6800254765937369305"
     }
 }

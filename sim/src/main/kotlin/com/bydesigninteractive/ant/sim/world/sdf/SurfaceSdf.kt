@@ -4,9 +4,11 @@ import com.bydesigninteractive.ant.sim.util.hash
 import com.bydesigninteractive.ant.sim.world.CHUNKS
 import com.bydesigninteractive.ant.sim.world.CHUNK_MM
 import com.bydesigninteractive.ant.sim.world.FoodSource
+import com.bydesigninteractive.ant.sim.world.SURFACE_MM
 import com.bydesigninteractive.ant.sim.world.Stone
 import com.bydesigninteractive.ant.sim.world.SurfaceMap
 import java.util.Random
+import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.max
@@ -40,6 +42,7 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
     private val foodsByChunk = arrayOfNulls<Array<FoodSource>>(CHUNKS * CHUNKS)
     private var foodIndexVersion = -1
     private val g = FloatArray(3)
+    private val openMasks = arrayOfNulls<BooleanArray>(CHUNKS * CHUNKS)
 
     /**
      * The signed distance at (x, y, z). It is a bound joined by the smooth minimum, exact near the
@@ -99,6 +102,53 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
             p[1] -= g[1] * d
             p[2] -= g[2] * d
         }
+    }
+
+    /**
+     * True if (x, y) is open ground: no rock, pebble, placed object or food shape comes within
+     * [MARGIN] plus [OPEN_SLACK] of it horizontally, so [distance] there is the ground's distance
+     * alone and the surface is exactly z = h(x, y). Conservative: it may say false on open ground,
+     * never true near a shape. Points outside the map are never open.
+     */
+    fun isOpenGround(x: Float, y: Float): Boolean {
+        if (x < 0f || y < 0f || x > SURFACE_MAX || y > SURFACE_MAX) return false
+        val k = chunkIndex(x, y)
+        val mask = openMasks[k] ?: buildOpenMask(k).also { openMasks[k] = it }
+        val cx = k % CHUNKS
+        val cy = k / CHUNKS
+        val i = ((x - cx * CHUNK_MM) / MASK_MM).toInt().coerceIn(0, MASK_CELLS - 1)
+        val j = ((y - cy * CHUNK_MM) / MASK_MM).toInt().coerceIn(0, MASK_CELLS - 1)
+        if (mask[i + j * MASK_CELLS]) return false
+        for (n in placed.indices) {
+            val b = placed[n]
+            val r = b.reach + MARGIN + OPEN_SLACK
+            if (abs(x - b.cx) <= r && abs(y - b.cy) <= r) return false
+        }
+        val foods = foodsNear(k)
+        for (n in foods.indices) {
+            val f = foods[n]
+            val r = foodReach(f) + MARGIN + OPEN_SLACK
+            if (abs(x - f.x) <= r && abs(y - f.y) <= r) return false
+        }
+        return true
+    }
+
+    /** Marks every mask cell of chunk [k] that a rock or pebble box (reach plus margin plus slack) overlaps. */
+    private fun buildOpenMask(k: Int): BooleanArray {
+        val mask = BooleanArray(MASK_CELLS * MASK_CELLS)
+        val ox = (k % CHUNKS) * CHUNK_MM.toFloat()
+        val oy = (k / CHUNKS) * CHUNK_MM.toFloat()
+        val blobs = near[k] ?: gather(k % CHUNKS, k / CHUNKS).also { near[k] = it }
+        for (b in blobs) {
+            val r = b.reach + MARGIN + OPEN_SLACK
+            if (b.cx + r < ox || b.cx - r > ox + CHUNK_MM || b.cy + r < oy || b.cy - r > oy + CHUNK_MM) continue
+            val i0 = floor((b.cx - r - ox) / MASK_MM).toInt().coerceIn(0, MASK_CELLS - 1)
+            val i1 = floor((b.cx + r - ox) / MASK_MM).toInt().coerceIn(0, MASK_CELLS - 1)
+            val j0 = floor((b.cy - r - oy) / MASK_MM).toInt().coerceIn(0, MASK_CELLS - 1)
+            val j1 = floor((b.cy + r - oy) / MASK_MM).toInt().coerceIn(0, MASK_CELLS - 1)
+            for (j in j0..j1) for (i in i0..i1) mask[i + j * MASK_CELLS] = true
+        }
+        return mask
     }
 
     /** The plant whose stem surface is within [within] of (x, y, z), or null. */
@@ -171,12 +221,16 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
         return r
     }
 
-    /** This chunk's blobs plus neighbors' blobs whose bounds reach into it. */
+    /**
+     * This chunk's blobs plus neighbors' blobs whose bounds, widened by [MARGIN] plus [OPEN_SLACK]
+     * for the open-ground mask, reach into it. The extra blobs never pass the near test in
+     * [distance], so they do not change it.
+     */
     private fun gather(cx: Int, cy: Int): Array<Blob> {
-        val x0 = cx * CHUNK_MM - MARGIN
-        val y0 = cy * CHUNK_MM - MARGIN
-        val x1 = (cx + 1) * CHUNK_MM + MARGIN
-        val y1 = (cy + 1) * CHUNK_MM + MARGIN
+        val x0 = cx * CHUNK_MM - (MARGIN + OPEN_SLACK)
+        val y0 = cy * CHUNK_MM - (MARGIN + OPEN_SLACK)
+        val x1 = (cx + 1) * CHUNK_MM + (MARGIN + OPEN_SLACK)
+        val y1 = (cy + 1) * CHUNK_MM + (MARGIN + OPEN_SLACK)
         val out = ArrayList<Blob>()
         for (ny in cy - 1..cy + 1) for (nx in cx - 1..cx + 1) {
             if (nx < 0 || ny < 0 || nx >= CHUNKS || ny >= CHUNKS) continue
@@ -213,6 +267,10 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
     private companion object {
         const val BLEND = 1.5f
         const val MARGIN = 10f
+        const val OPEN_SLACK = 1f
+        const val MASK_MM = 5f
+        const val MASK_CELLS = 100
+        const val SURFACE_MAX = SURFACE_MM.toFloat()
         const val E = 0.25f
         const val ITERATIONS = 2
         const val ENTRANCE_CLEARANCE = 30f

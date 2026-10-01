@@ -27,12 +27,13 @@ internal object SurfaceWalk {
         p[0] = x
         p[1] = y
         p[2] = w.surface.ground.height(x, y)
-        w.surface.sdf.project(p)
+        val open = onOpenGround(w, p, w.norm)
+        if (!open) w.surface.sdf.project(p)
         a.x = p[0]
         a.y = p[1]
         a.z = p[2]
         a.heading = heading
-        normal(w, a)
+        if (open) takeNormal(w, a) else normal(w, a)
         a.fx = cos(heading)
         a.fy = sin(heading)
         a.fz = 0f
@@ -53,11 +54,12 @@ internal object SurfaceWalk {
         p[0] = x
         p[1] = y
         p[2] = a.z + a.fz * s
-        w.surface.sdf.project(p)
+        val open = onOpenGround(w, p, w.norm)
+        if (!open) w.surface.sdf.project(p)
         a.x = p[0]
         a.y = p[1]
         a.z = p[2]
-        normal(w, a)
+        if (open) takeNormal(w, a) else normal(w, a)
         transport(a)
         if (bounced) turn(a, PI.toFloat())
         val noise = w.params.piErrorPerMm * s
@@ -153,8 +155,37 @@ internal object SurfaceWalk {
         p[1] = a.y + (a.fy * c + cy * s) * ahead
         p[2] = a.z + (a.fz * c + cz * s) * ahead
         // An antenna only needs to be near the surface, so one Newton step is enough.
-        w.surface.sdf.project(p, iterations = 1)
+        if (!onOpenGround(w, p, null)) w.surface.sdf.project(p, iterations = 1)
         return field.get(p[0], p[1], p[2])
+    }
+
+    /**
+     * On open ground, puts the point (p[0], p[1]) onto the surface, z = h(x, y), with the unit
+     * normal (-hx, -hy, 1) into [n] if given, from one height-and-slope sample, and returns true.
+     * Near any shape it returns false and leaves the point alone (the caller projects it).
+     */
+    private fun onOpenGround(w: World, p: FloatArray, n: FloatArray?): Boolean {
+        val sdf = w.surface.sdf
+        if (!sdf.isOpenGround(p[0], p[1])) {
+            sdf.fastMisses++
+            return false
+        }
+        sdf.fastHits++
+        val s = w.slope
+        p[2] = w.surface.ground.heightAndSlope(p[0], p[1], s)
+        if (n != null) {
+            val len = sqrt(s[0] * s[0] + s[1] * s[1] + 1f)
+            n[0] = -s[0] / len
+            n[1] = -s[1] / len
+            n[2] = 1f / len
+        }
+        return true
+    }
+
+    private fun takeNormal(w: World, a: Ant) {
+        a.nx = w.norm[0]
+        a.ny = w.norm[1]
+        a.nz = w.norm[2]
     }
 
     private fun normal(w: World, a: Ant) {
