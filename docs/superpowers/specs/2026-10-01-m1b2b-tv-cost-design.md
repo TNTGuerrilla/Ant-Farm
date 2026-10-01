@@ -1,6 +1,6 @@
 # M1b-2b: simulation cost on the TV
 
-Status: approved in design discussion on 2026-10-01, awaiting spec review.
+Status: approved 2026-10-01; implemented on branch m1b2b-tv-cost (results in `docs/superpowers/notes/2026-10-01-m1b2b-tv-cost.md`).
 Parent design: `docs/design/poc-design.md` (sections 11, 12 and 14). Follows M1b-2a (`docs/superpowers/specs/2026-09-30-m1b2a-engine-design.md`). The numbers that motivate it are in `docs/superpowers/notes/2026-09-30-m1b2a-tv-session.md`.
 
 ## 1. Goal
@@ -24,7 +24,7 @@ Out of scope: the low-poly look and the final 60 fps TV test (M1b-2c); updating 
 ### 2.1 The phase profile (`sim`)
 
 - `TickProfile` is a pure-Kotlin phase timer. `World` holds an optional one (null by default); `World.step` fills it only when one is attached, so normal runs pay nothing beyond a null check per phase.
-- Phases: spatial-index rebuild, surface fields step, nest (paths, excavation, nest pheromone), surface ants, nest ants. `SimRunner` adds the publish time.
+- Phases: spatial-index rebuild, surface fields step, nest (paths, excavation, nest pheromone), surface ants, nest ants. `Benchmark.cost` adds the publish time (runs through `SimRunner` do not fill a profile).
 - Counters: `SurfaceSdf.distance` evaluations, `HeightField` samples, and (after tier 2) fast-path hits and misses. A counter is a plain `Int` increment.
 - The JVM benchmarks in `SurfaceRunTest` print the same breakdown as the TV, so ideas are tried on desktop before an install.
 
@@ -70,7 +70,7 @@ A searching forager in the open drops from about 34 evaluations per tick to 3 sa
 
 ### 4.3 The clearance test
 
-`SurfaceSdf.isOpenGround(x, y, margin)` is conservative: it returns true only if no shape's reach (its near radius) comes within `margin` of the point. The margin covers one step's travel plus the antenna spread. It reuses the per-chunk shape arrays from tier 1 and costs a few comparisons. Near any shape, the full projection runs exactly as today, so climbing rocks, overhangs and stems keep their behaviour.
+`SurfaceSdf.isOpenGround(x, y)` is conservative: it returns true only if no shape's reach plus the SDF's near margin (and 1 mm of slack) comes within the point horizontally. It is asked at each actual query point (the step's target and each antenna point), so no travel or antenna margin is needed. It reuses the per-chunk shape arrays from tier 1 and costs a few comparisons. Near any shape, the full projection runs exactly as today, so climbing rocks, overhangs and stems keep their behaviour.
 
 ### 4.4 Consequences
 
@@ -93,4 +93,4 @@ A searching forager in the open drops from about 34 evaluations per tick to 3 sa
 - Tier 1: `SurfaceSdf`, `SurfaceMap` (food index), `SpatialIndex`, `Field3`, `SurfaceWalk`.
 - Tier 2: `SurfaceWalk` (fast path), `SurfaceSdf.isOpenGround`.
 - `android/build.gradle.kts`: the `profile` build type. `android/.../BenchmarkActivity.kt` (new) and its manifest entry.
-- `core/.../engine/SimRunner.kt`: publish time in the profile.
+- `core/.../engine/Benchmark.kt` (new): cost and speed benchmarks; it adds the publish time to the profile.
