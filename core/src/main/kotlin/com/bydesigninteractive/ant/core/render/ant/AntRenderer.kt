@@ -18,16 +18,32 @@ import com.bydesigninteractive.ant.sim.util.unit
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Packs surface ants into instance records of [FLOATS] floats: position and gait phase, forward
  * (the [TurnSmoother]'s drawn forward) and gaster fill (crop), up and carry code, and the model
- * scale. Ants within [NEAR_MM] of the eye go to the near array, the rest to the far one; nest
- * ants are skipped. Pure, so it unit-tests on the JVM.
+ * scale. Nest ants are skipped, and so are ants [ANT_DRAW_MM] or more from the eye and ants whose
+ * bounding sphere lies outside the view; ants shrink to nothing over the last [FADE_MM] before
+ * [ANT_DRAW_MM], so none pops. At most [MAX_DETAILED] ants, the nearest within [NEAR_MM], get the
+ * detailed model; every other drawn ant gets the simple one. Pure, so it unit-tests on the JVM.
  */
 object AntInstances {
     const val FLOATS = 13
-    const val NEAR_MM = 500f
+    const val NEAR_MM = 300f
+    const val MAX_DETAILED = 150
+
+    /** Ants this far from the eye or farther are not drawn. */
+    const val ANT_DRAW_MM = 1200f
+
+    /** The band before [ANT_DRAW_MM] over which ants shrink to nothing. */
+    const val FADE_MM = 200f
+
+    /** Only ants nearer than this cast a shadow. */
+    const val SHADOW_MM = 600f
+
+    /** The bounding sphere's radius at model scale (mm): the model reaches 3.55 mm from its origin (an antenna tip). */
+    const val BOUND_MM = 4f
 
     /** The model's body length (mm), from the gaster tip (x = -2.85) to the front of the head (x = 2.6). */
     const val MODEL_LENGTH_MM = 5.45f
@@ -41,33 +57,154 @@ object AntInstances {
     /** The uniform model scale that draws ant [id] at its [bodyLength]. */
     fun scale(id: Int): Float = bodyLength(id) / MODEL_LENGTH_MM
 
-    /** Fills [near] and [far] from [poses]; [counts] receives the near (0) and far (1) record counts. Records past an array's end are dropped. */
-    fun fill(poses: List<AntPose>, animator: AntAnimator, turns: TurnSmoother, eyeX: Float, eyeY: Float, eyeZ: Float, near: FloatArray, far: FloatArray, counts: IntArray) {
-        counts[0] = 0
-        counts[1] = 0
-        for (i in poses.indices) {
+    /** The size factor for an ant at squared distance [d2] from the eye: 1 nearer than the fade band, falling to 0 at [ANT_DRAW_MM]. */
+    fun fade(d2: Float): Float = ((ANT_DRAW_MM - sqrt(d2)) / FADE_MM).coerceIn(0f, 1f)
+
+    /**
+     * Fills [out] from [poses] as seen from [camera], whose position and frustum must be up to
+     * date. Two passes: the first culls and keeps the squared distances of the [MAX_DETAILED]
+     * nearest ants within [NEAR_MM] in a fixed-size max-heap, whose top is then the detail
+     * threshold; the second writes the records. Allocates nothing unless [out] has to grow.
+     */
+    fun fill(poses: List<AntPose>, animator: AntAnimator, turns: TurnSmoother, camera: Camera, out: AntBatch) {
+        val n = poses.size
+        out.ensure(n)
+        val eye = camera.position
+        val frustum = camera.frustum
+        val dist = out.dist
+        val heap = out.heap
+        var heapN = 0
+        var culledFar = 0
+        var culledView = 0
+        val draw2 = ANT_DRAW_MM * ANT_DRAW_MM
+        val near2 = NEAR_MM * NEAR_MM
+        for (i in 0 until n) {
+            dist[i] = -1f
             val p = poses[i]
             if (p.space != Space.SURFACE) continue
-            val dx = p.x - eyeX
-            val dy = p.y - eyeY
-            val dz = p.z - eyeZ
-            val isNear = dx * dx + dy * dy + dz * dz < NEAR_MM * NEAR_MM
-            val out = if (isNear) near else far
-            val k = if (isNear) 0 else 1
-            val o = counts[k] * FLOATS
-            if (o + FLOATS > out.size) continue
-            out[o] = p.x; out[o + 1] = p.y; out[o + 2] = p.z; out[o + 3] = animator.phase(p.id)
-            out[o + 4] = turns.fx(p.id, p.fx); out[o + 5] = turns.fy(p.id, p.fy); out[o + 6] = turns.fz(p.id, p.fz); out[o + 7] = p.crop
-            out[o + 8] = p.nx; out[o + 9] = p.ny; out[o + 10] = p.nz; out[o + 11] = p.carry.toFloat()
-            out[o + 12] = scale(p.id)
-            counts[k]++
+            val dx = p.x - eye.x
+            val dy = p.y - eye.y
+            val dz = p.z - eye.z
+            val d2 = dx * dx + dy * dy + dz * dz
+            if (d2 >= draw2) {
+                culledFar++
+                continue
+            }
+            if (!frustum.sphereInFrustum(p.x, p.y, p.z, BOUND_MM * scale(p.id))) {
+                culledView++
+                continue
+            }
+            dist[i] = d2
+            if (d2 < near2) heapN = offer(heap, heapN, d2)
         }
+        // With the heap full, its top is the largest distance among the nearest MAX_DETAILED.
+        val detailMax = if (heapN == MAX_DETAILED) heap[0] else Float.MAX_VALUE
+        val shadow2 = SHADOW_MM * SHADOW_MM
+        val records = out.records
+        val mid = out.mid
+        val tail = out.tail
+        var nd = 0
+        var nm = 0
+        var nt = 0
+        for (i in 0 until n) {
+            val d2 = dist[i]
+            if (d2 < 0f) continue
+            val p = poses[i]
+            val o: Int
+            val dst: FloatArray
+            if (d2 < near2 && d2 <= detailMax && nd < MAX_DETAILED) {
+                dst = records; o = nd * FLOATS; nd++
+            } else if (d2 < shadow2) {
+                dst = mid; o = nm * FLOATS; nm++
+            } else {
+                dst = tail; o = nt * FLOATS; nt++
+            }
+            dst[o] = p.x; dst[o + 1] = p.y; dst[o + 2] = p.z; dst[o + 3] = animator.phase(p.id)
+            dst[o + 4] = turns.fx(p.id, p.fx); dst[o + 5] = turns.fy(p.id, p.fy); dst[o + 6] = turns.fz(p.id, p.fz); dst[o + 7] = p.crop
+            dst[o + 8] = p.nx; dst[o + 9] = p.ny; dst[o + 10] = p.nz; dst[o + 11] = p.carry.toFloat()
+            dst[o + 12] = scale(p.id) * fade(d2)
+        }
+        System.arraycopy(mid, 0, records, nd * FLOATS, nm * FLOATS)
+        System.arraycopy(tail, 0, records, (nd + nm) * FLOATS, nt * FLOATS)
+        out.detailed = nd
+        out.shadowedSimple = nm
+        out.plainSimple = nt
+        out.culledFar = culledFar
+        out.culledView = culledView
+    }
+
+    /** Offers [d2] to the max-heap [heap] of [size] entries, capped at [MAX_DETAILED]; returns the new size. */
+    private fun offer(heap: FloatArray, size: Int, d2: Float): Int {
+        if (size < MAX_DETAILED) {
+            var k = size
+            heap[k] = d2
+            while (k > 0) {
+                val parent = (k - 1) / 2
+                if (heap[parent] >= heap[k]) break
+                val t = heap[parent]; heap[parent] = heap[k]; heap[k] = t
+                k = parent
+            }
+            return size + 1
+        }
+        if (d2 >= heap[0]) return size
+        heap[0] = d2
+        var k = 0
+        while (true) {
+            val l = 2 * k + 1
+            if (l >= size) break
+            val r = l + 1
+            val c = if (r < size && heap[r] > heap[l]) r else l
+            if (heap[k] >= heap[c]) break
+            val t = heap[c]; heap[c] = heap[k]; heap[k] = t
+            k = c
+        }
+        return size
     }
 }
 
 /**
- * Draws all surface ants with GL 3 instancing: soft shadows first (blended, no depth write), then
- * the detailed model for ants within [AntInstances.NEAR_MM] of the eye and the simple one beyond.
+ * One frame's ant instance records and counts, filled by [AntInstances.fill]. [records] holds the
+ * [detailed] ants first, then the [shadowedSimple] simple-model ants nearer than
+ * [AntInstances.SHADOW_MM], then the [plainSimple] ones beyond, so the shadows, the detailed model
+ * and the simple model each draw one contiguous run. Grows only when more poses arrive than it holds.
+ */
+class AntBatch(capacity: Int = 2048) {
+    var capacity = capacity
+        private set
+    var records = FloatArray(capacity * AntInstances.FLOATS)
+        private set
+    internal var mid = FloatArray(capacity * AntInstances.FLOATS)
+    internal var tail = FloatArray(capacity * AntInstances.FLOATS)
+    internal var dist = FloatArray(capacity)
+    internal val heap = FloatArray(AntInstances.MAX_DETAILED)
+    var detailed = 0
+    var shadowedSimple = 0
+    var plainSimple = 0
+
+    /** Surface ants skipped for being [AntInstances.ANT_DRAW_MM] or more from the eye. */
+    var culledFar = 0
+
+    /** Surface ants within range skipped for lying outside the view. */
+    var culledView = 0
+
+    val simple: Int get() = shadowedSimple + plainSimple
+    val shadowed: Int get() = detailed + shadowedSimple
+
+    /** Grows the arrays to hold at least [n] ants (to twice [n], so growth is rare). */
+    fun ensure(n: Int) {
+        if (n <= capacity) return
+        capacity = n * 2
+        records = FloatArray(capacity * AntInstances.FLOATS)
+        mid = FloatArray(capacity * AntInstances.FLOATS)
+        tail = FloatArray(capacity * AntInstances.FLOATS)
+        dist = FloatArray(capacity)
+    }
+}
+
+/**
+ * Draws the surface ants [AntInstances] selects with GL 3 instancing: soft shadows first (blended,
+ * no depth write) under ants nearer than [AntInstances.SHADOW_MM], then the detailed model for the
+ * nearest ants and the simple one for the rest.
  * The vertex shader poses the legs, swells the gaster, shows the carried piece and scales each ant
  * to its own size. Render thread only.
  *
@@ -77,9 +214,9 @@ class AntRenderer : Disposable {
     private val shader: ShaderProgram
     private val shadowShader: ShaderProgram
     private var capacity = 2048
-    private var near = FloatArray(capacity * AntInstances.FLOATS)
-    private var far = FloatArray(capacity * AntInstances.FLOATS)
-    private val counts = IntArray(2)
+
+    /** The last frame's records and counts (the counts are logged). */
+    val batch = AntBatch(capacity)
     private val detailed: Mesh
     private val simple: Mesh
     private val disc: Mesh
@@ -99,9 +236,10 @@ class AntRenderer : Disposable {
     }
 
     fun draw(poses: List<AntPose>, animator: AntAnimator, turns: TurnSmoother, sky: SkyState, camera: Camera) {
-        if (poses.size > capacity) grow(poses.size * 2)
-        AntInstances.fill(poses, animator, turns, camera.position.x, camera.position.y, camera.position.z, near, far, counts)
-        if (counts[0] + counts[1] == 0) return
+        AntInstances.fill(poses, animator, turns, camera, batch)
+        if (batch.capacity > capacity) grow(batch.capacity)
+        val records = batch.records
+        if (batch.detailed + batch.simple == 0) return
         val gl = Gdx.gl
         val strength = shadowStrength(sky)
         gl.glDisable(GL20.GL_CULL_FACE)
@@ -112,8 +250,7 @@ class AntRenderer : Disposable {
         shadowShader.setUniformMatrix("u_projView", camera.combined)
         shadowShader.setUniformf("u_sunDir", sky.sunDir[0], sky.sunDir[1], sky.sunDir[2])
         shadowShader.setUniformf("u_strength", strength)
-        drawInstances(disc, near, counts[0], shadowShader)
-        drawInstances(disc, far, counts[1], shadowShader)
+        drawInstances(disc, records, 0, batch.shadowed, shadowShader)
         gl.glDepthMask(true)
         gl.glDisable(GL20.GL_BLEND)
         // The model is closed and wound counter-clockwise from outside, and (forward, left, up) is right-handed.
@@ -121,25 +258,24 @@ class AntRenderer : Disposable {
         gl.glCullFace(GL20.GL_BACK)
         shader.bind()
         Shaders.applySky(shader, sky, camera)
-        drawInstances(detailed, near, counts[0], shader)
-        drawInstances(simple, far, counts[1], shader)
+        drawInstances(detailed, records, 0, batch.detailed, shader)
+        drawInstances(simple, records, batch.detailed, batch.simple, shader)
         gl.glDisable(GL20.GL_CULL_FACE)
     }
 
-    /** Grows the record arrays and recreates the meshes' instance buffers at [newCapacity] ants. */
+    /** Recreates the meshes' instance buffers at [newCapacity] ants. */
     private fun grow(newCapacity: Int) {
         capacity = newCapacity
-        near = FloatArray(capacity * AntInstances.FLOATS)
-        far = FloatArray(capacity * AntInstances.FLOATS)
         for (m in arrayOf(detailed, simple, disc)) {
             m.disableInstancedRendering()
             m.enableInstancedRendering(false, capacity, *instanceAttributes())
         }
     }
 
-    private fun drawInstances(mesh: Mesh, data: FloatArray, count: Int, program: ShaderProgram) {
+    /** Draws [count] instances of [mesh] from the records of [data] starting at record [first]. */
+    private fun drawInstances(mesh: Mesh, data: FloatArray, first: Int, count: Int, program: ShaderProgram) {
         if (count == 0) return
-        mesh.setInstanceData(data, 0, count * AntInstances.FLOATS)
+        mesh.setInstanceData(data, first * AntInstances.FLOATS, count * AntInstances.FLOATS)
         mesh.render(program, GL20.GL_TRIANGLES)
     }
 

@@ -8,7 +8,8 @@ import kotlin.math.sqrt
  * The fused low-poly ant, built in code: faceted lumps for the gaster, a thick waist joint, the
  * thorax, a neck joint and the head, plus mandibles, elbowed antennae and six two-segment legs
  * (thin three-sided prisms), and hidden carried pieces (a soil pellet and a prey piece) the shader
- * shows per ant. Every vertex carries a part code and a pivot: a leg's hip, the gaster's centre,
+ * shows per ant. The simple model (`build(false)`) has fewer facets, one-segment legs, no antennae
+ * or mandibles and no carried pieces; it keeps the part codes, so the same shader draws it. Every vertex carries a part code and a pivot: a leg's hip, the gaster's centre,
  * or the mandible tip, so the shader can swing legs, swell the gaster and show the load.
  * Model space is mm with x forward, y left, z up; the feet touch z = 0.
  *
@@ -87,8 +88,10 @@ object AntMesh {
                 o.tri(m0, m2, m1, 0.5f, PART_BODY, ZERO)
             }
         }
-        lump(o, MANDIBLE_TIP, 0.35f, 0.35f, 0.3f, 4, 2, PART_PELLET, MANDIBLE_TIP, floatArrayOf(0.43f, 0.31f, 0.2f))
-        lump(o, MANDIBLE_TIP, 0.5f, 0.4f, 0.35f, 4, 2, PART_PREY, MANDIBLE_TIP, floatArrayOf(0.78f, 0.71f, 0.55f))
+        if (detailed) {
+            lump(o, MANDIBLE_TIP, 0.35f, 0.35f, 0.3f, 4, 2, PART_PELLET, MANDIBLE_TIP, floatArrayOf(0.43f, 0.31f, 0.2f))
+            lump(o, MANDIBLE_TIP, 0.5f, 0.4f, 0.35f, 4, 2, PART_PREY, MANDIBLE_TIP, floatArrayOf(0.78f, 0.71f, 0.55f))
+        }
         return o.v.toFloatArray()
     }
 

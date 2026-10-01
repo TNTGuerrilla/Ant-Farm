@@ -7,7 +7,10 @@ import com.bydesigninteractive.ant.core.AntApp
 import com.bydesigninteractive.ant.core.stub.StubApp
 import com.bydesigninteractive.ant.sim.scenario.Scenarios
 
-/** Runs the M1 app; `--stub` runs the M0 stub instead, and `--seed=N` picks the world seed. */
+/**
+ * Runs the M1 app; `--stub` runs the M0 stub instead, `--seed=N` picks the world seed, and
+ * `--scenario=colony1000` runs the 1,000-ant benchmark colony instead of the starter.
+ */
 fun main(args: Array<String>) {
     useLegacyShadersOnCoreProfile()
     val config = Lwjgl3ApplicationConfiguration().apply {
@@ -20,7 +23,17 @@ fun main(args: Array<String>) {
         setForegroundFPS(0)
     }
     val seed = args.firstOrNull { it.startsWith("--seed=") }?.substringAfter('=')?.toLongOrNull() ?: 1L
-    val app = if ("--stub" in args) StubApp("desktop") else AntApp("desktop", Scenarios.starter(seed), tv = false)
+    val scenario = args.firstOrNull { it.startsWith("--scenario=") }?.substringAfter('=') ?: "starter"
+    val app = if ("--stub" in args) {
+        StubApp("desktop")
+    } else {
+        val world = when (scenario) {
+            "colony1000" -> Scenarios.colony1000(seed)
+            "starter" -> Scenarios.starter(seed)
+            else -> error("unknown scenario $scenario")
+        }
+        AntApp("desktop", world, tv = false)
+    }
     Lwjgl3Application(app, config)
 }
 

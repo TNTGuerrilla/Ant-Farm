@@ -13,6 +13,7 @@ import com.bydesigninteractive.ant.core.engine.AntPose
 import com.bydesigninteractive.ant.core.engine.FoodView
 import com.bydesigninteractive.ant.core.engine.OverlayChunk
 import com.bydesigninteractive.ant.core.engine.Published
+import com.bydesigninteractive.ant.core.render.ant.AntBatch
 import com.bydesigninteractive.ant.core.render.ant.AntRenderer
 import com.bydesigninteractive.ant.core.render.ant.TurnSmoother
 import com.bydesigninteractive.ant.core.render.sky.DayCycle
@@ -61,6 +62,9 @@ class SurfaceRenderer3D(
     private val skyQuad: Mesh
     private val ants: AntRenderer
     private val grass: GrassRenderer
+
+    /** The last drawn frame's ant instance counts. */
+    val antBatch: AntBatch get() = ants.batch
 
     /** Started last, so a failure above leaves no thread running. */
     private val cache: ChunkCache

@@ -28,6 +28,13 @@ class AntMeshTest {
     }
 
     @Test
+    fun theSimpleAntHasNoCarriedPiecesButKeepsItsPartCodes() {
+        val p = parts(AntMesh.build(false)).toSet()
+        assertTrue(AntMesh.PART_PELLET !in p && AntMesh.PART_PREY !in p, "simple ant parts $p")
+        for (part in 0..7) assertTrue(part in p, "part $part missing from the simple ant")
+    }
+
+    @Test
     fun theAntStandsOnItsFeetFacingForward() {
         val v = AntMesh.build(true)
         var minZ = Float.MAX_VALUE

@@ -204,9 +204,17 @@ class AntApp(private val label: String, private val world: World, private val tv
                 APP_LOG_TAG,
                 "view ${viewTitle()} fps ${Gdx.graphics.framesPerSecond} p50 ${frames.percentile(0.5f)} " +
                     "p99 ${frames.percentile(0.99f)} max ${frames.max()} slow ${frames.countOver(25f)}/${frames.count} tick ${h.tick} " +
-                    "ticks/s ${f1(h.ticksPerSecond)} ms/tick ${f2(h.msPerTickAvg)} max ${f2(h.msPerTickMax)} resets ${h.resets}",
+                    "ticks/s ${f1(h.ticksPerSecond)} ms/tick ${f2(h.msPerTickAvg)} max ${f2(h.msPerTickMax)} resets ${h.resets}" + antCounts(),
             )
         }
+    }
+
+    /** The low-poly view's last frame of ants for the log: detailed, simple (of which shadowed) and culled by distance and by view. */
+    private fun antCounts(): String {
+        val look = look
+        if (view != View.SURFACE_3D || look == null) return ""
+        val b = look.antBatch
+        return " ants detailed ${b.detailed} simple ${b.simple} (shadowed ${b.shadowedSimple}) culled far ${b.culledFar} view ${b.culledView}"
     }
 
     /** Takes the newest snapshot, if any, and fills the pose pool for this frame, [dt] seconds after the last. */
