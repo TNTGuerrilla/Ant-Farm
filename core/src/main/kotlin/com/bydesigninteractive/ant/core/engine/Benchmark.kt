@@ -17,6 +17,9 @@ data class SpeedResult(val ticksPerSecond: Float, val line: String)
  * a [SimRunner] at a speed setting and reports the rate it achieved.
  */
 object Benchmark {
+    /**
+     * Steps [world] for [warmupTicks], then measures [measureTicks] ticks of step plus publish on the calling thread; no simulation thread may be running.
+     */
     fun cost(world: World, warmupTicks: Int, measureTicks: Int): CostResult {
         require(measureTicks > 0) { "measureTicks must be positive" }
         val published = Published(world)
@@ -27,18 +30,21 @@ object Benchmark {
             published.publish(world, System.nanoTime(), stats, schedule)
         }
         val profile = TickProfile()
-        world.profile = profile
         val times = LongArray(measureTicks)
-        for (i in 0 until measureTicks) {
-            val t0 = System.nanoTime()
-            world.step()
-            val t1 = System.nanoTime()
-            published.publish(world, t1, stats, schedule)
-            val t2 = System.nanoTime()
-            profile.publishNanos += t2 - t1
-            times[i] = t2 - t0
+        try {
+            world.profile = profile
+            for (i in 0 until measureTicks) {
+                val t0 = System.nanoTime()
+                world.step()
+                val t1 = System.nanoTime()
+                published.publish(world, t1, stats, schedule)
+                val t2 = System.nanoTime()
+                profile.publishNanos += t2 - t1
+                times[i] = t2 - t0
+            }
+        } finally {
+            world.profile = null
         }
-        world.profile = null
         val avg = times.average() / 1e6
         times.sort()
         val p50 = times[percentileIndex(measureTicks, 0.5)] / 1e6
@@ -62,10 +68,16 @@ object Benchmark {
         val runner = SimRunner(world, published)
         runner.send(Command.SetSpeed(speed))
         runner.start()
-        Thread.sleep((seconds * 1000f).toLong())
-        val hud = published.hud
-        runner.stop()
-        val failed = published.failed?.let { " FAILED $it" } ?: ""
+        val hud: HudNumbers
+        val failedThrowable: Throwable?
+        try {
+            Thread.sleep((seconds * 1000f).toLong())
+            hud = published.hud
+            failedThrowable = published.failed
+        } finally {
+            runner.stop()
+        }
+        val failed = failedThrowable?.let { " FAILED $it" } ?: ""
         val line = String.format(
             Locale.ROOT,
             "BENCH speed %.0fx ants %d: ticks/s %.1f (target %.1f) ms/tick avg %.2f max %.2f resets %d%s",
