@@ -31,5 +31,5 @@ fun main(args: Array<String>) {
 private fun useLegacyShadersOnCoreProfile() {
     ShaderProgram.prependVertexCode = "#version 150\n#define attribute in\n#define varying out\n"
     ShaderProgram.prependFragmentCode = "#version 150\n#define varying in\nout vec4 fragColor;\n" +
-        "#define gl_FragColor fragColor\n#define texture2D texture\n"
+        "#define gl_FragColor fragColor\n#define texture2D texture\n#define textureCube texture\n"
 }

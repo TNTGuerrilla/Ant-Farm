@@ -73,7 +73,12 @@ void main() {
         float leg = part - 1.0;
         float group = (leg == 0.0 || leg == 4.0 || leg == 2.0) ? 0.0 : 0.5;
         float s = sin(TAU * (phase + group));
-        float swing = 0.35 * s;
+        // Yaw by angle t about z moves a foot at offset d from its pivot by -t * d.y along x (small t).
+        // A left foot has d.y > 0 and a right foot d.y < 0, so the sign of the swing must follow the
+        // side: with swing = -0.35 * s * sign(pivot.y), the foot's x velocity is proportional to
+        // 0.35 * cos(TAU * (phase + group)) for both sides. The lift below happens while that cosine
+        // is positive, so the foot is raised exactly while it moves toward +x (the forward stroke).
+        float swing = -0.35 * s * sign(a_pivot.y);
         vec3 d = p - a_pivot;
         float c = cos(swing);
         float sn = sin(swing);
@@ -90,7 +95,7 @@ void main() {
     p.z += 0.05 * sin(2.0 * TAU * phase);
     vec3 f = normalize(i_fwd.xyz);
     vec3 u = normalize(i_up.xyz);
-    vec3 l = cross(u, f);
+    vec3 l = normalize(cross(u, f));
     vec3 world = i_pos.xyz + f * p.x + l * p.y + u * p.z;
     vec3 wn = normalize(f * n.x + l * n.y + u * n.z);
     v_color = lit(a_color, wn);
@@ -113,7 +118,7 @@ varying float v_alpha;
 void main() {
     vec3 f = normalize(i_fwd.xyz);
     vec3 u = normalize(i_up.xyz);
-    vec3 l = cross(u, f);
+    vec3 l = normalize(cross(u, f));
     vec3 offset = (u_sunDir - u * dot(u_sunDir, u)) * 0.8;
     vec3 world = i_pos.xyz + offset + f * a_position.x + l * a_position.y + u * 0.08;
     v_alpha = a_alpha * u_strength;
