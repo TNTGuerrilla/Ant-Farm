@@ -11,6 +11,7 @@ import com.badlogic.gdx.utils.Disposable
 import com.bydesigninteractive.ant.core.engine.AntPose
 import com.bydesigninteractive.ant.core.render.AntAnimator
 import com.bydesigninteractive.ant.core.render.Shaders
+import com.bydesigninteractive.ant.core.render.sky.DayCycle
 import com.bydesigninteractive.ant.core.render.sky.SkyState
 import com.bydesigninteractive.ant.sim.ant.Space
 import kotlin.math.cos
@@ -86,7 +87,7 @@ class AntRenderer : Disposable {
         AntInstances.fill(poses, animator, camera.position.x, camera.position.y, camera.position.z, near, far, counts)
         if (counts[0] + counts[1] == 0) return
         val gl = Gdx.gl
-        val strength = 0.35f * max(0f, -sky.sunDir[2]).coerceAtLeast(0.3f)
+        val strength = shadowStrength(sky)
         gl.glDisable(GL20.GL_CULL_FACE)
         gl.glEnable(GL20.GL_BLEND)
         gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
@@ -176,6 +177,20 @@ class AntRenderer : Disposable {
             throw e
         }
         return m
+    }
+
+    companion object {
+        /** Shadow opacity at midday. */
+        const val SHADOW_MAX = 0.45f
+
+        /** Direct light strength (luminance times how much it points down) at the midday keyframe. */
+        private val NOON_DIRECT: Float = direct(DayCycle.sky(0.5f, SkyState()))
+
+        private fun direct(sky: SkyState): Float =
+            (0.2126f * sky.sunColor[0] + 0.7152f * sky.sunColor[1] + 0.0722f * sky.sunColor[2]) * max(0f, -sky.sunDir[2])
+
+        /** Shadow opacity for [sky]: [SHADOW_MAX] at midday, fading with the direct light's strength. Pure. */
+        fun shadowStrength(sky: SkyState): Float = (SHADOW_MAX * direct(sky) / NOON_DIRECT).coerceIn(0f, SHADOW_MAX)
     }
 
     override fun dispose() {

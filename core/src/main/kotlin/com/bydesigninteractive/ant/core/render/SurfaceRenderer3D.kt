@@ -154,7 +154,8 @@ class SurfaceRenderer3D(seed: Long, private val published: Published) : Disposab
         gl.glFrontFace(GL20.GL_CCW)
         world.bind()
         Shaders.applySky(world, sky, camera)
-        for (slot in slots.values) {
+        for ((key, slot) in slots) {
+            if (abs(key % CHUNKS - fcx) > RING || abs(key / CHUNKS - fcy) > RING) continue // kept only for hysteresis
             slot.ground?.render(world, GL20.GL_TRIANGLES)
             slot.rocks?.render(world, GL20.GL_TRIANGLES)
         }

@@ -126,7 +126,7 @@ void main() {
     vec3 u = normalize(i_up.xyz);
     vec3 l = normalize(cross(u, f));
     vec3 offset = (u_sunDir - u * dot(u_sunDir, u)) * 0.8;
-    vec3 world = i_pos.xyz + offset + f * a_position.x + l * a_position.y + u * 0.08;
+    vec3 world = i_pos.xyz + offset + f * a_position.x + l * a_position.y + u * 0.2;
     v_alpha = a_alpha * u_strength;
     gl_Position = u_projView * vec4(world, 1.0);
 }
