@@ -48,8 +48,8 @@ Three benchmark sessions: the baseline (the `profile` build before any code chan
 Each change must leave the fingerprint identical (the M1b-2a check: run a fixed scenario, compare the sum and counts before and after). A change that is not bit-exact moves to tier 2.
 
 1. **The release build** is measured first, before any code change, so later gains have the right baseline.
-2. **Shape data in plain arrays.** The blob, stem, food and placed-shape data that `SurfaceSdf.distance` loops over move to packed `FloatArray`s (per chunk for blobs), so the hottest loop makes no interface calls on `List`. The order of shapes is unchanged.
-3. **Food indexed by chunk.** Each chunk keeps the list of foods whose shapes can reach it, in the same relative order as `map.foods`. `distance` loops over that list instead of every food. The near test is unchanged, so only foods that would have failed it are skipped, and the result is bit-exact. The index is updated when food is added or removed.
+2. **Shape data in plain arrays.** The per-chunk blob lists and the per-chunk food lists that `SurfaceSdf.distance` loops over become plain arrays (`Array<Blob>`, `Array<FoodSource>`), so the hottest loop makes no interface calls on `List`. The order of shapes is unchanged.
+3. **Food indexed by chunk.** Each chunk keeps the list of foods whose shapes can reach it, in the same relative order as `map.foods`. `distance` loops over that list instead of every food. The near test is unchanged, so only foods that would have failed it are skipped, and the result is bit-exact. Food is added and removed only through `SurfaceMap.addFood` and `removeFood`, which bump a version that tells the index to rebuild.
 4. **The spatial index clears only what it used.** `SpatialIndex` remembers which buckets it filled and resets those, instead of filling 160,801 entries every tick.
 5. **Smaller trims.** Cache the cos and sin of the constant antenna angle. Unroll the 8-corner loop in `Field3.get` and `Field3.add`, and give `Field3` a small cache of recent blocks (4 entries) instead of 1.
 6. **Not tier 1**, because each could change the last bit of a result: `hypot` to `sqrt`, float-only or approximate trig, a cheaper Gaussian. These are tier 2 candidates, taken only if the TV breakdown shows they matter.
@@ -81,7 +81,7 @@ A searching forager in the open drops from about 34 evaluations per tick to 3 sa
 ## 5. Testing
 
 - Tier 1: the fingerprint test (bit-exact) after each change, plus all existing tests.
-- Fast path, property tests: at sampled open-ground points, the fast result matches a many-iteration Newton projection within 0.001 mm in position and 0.1 degrees in normal; at sampled points near shapes (rocks, pebbles, stems, prey, placed shapes), `isOpenGround` never returns true.
+- Fast path, property tests: at sampled open-ground points, the fast point lies on the SDF surface within 0.001 mm and its normal is within 1 degree of the SDF gradient there (the gradient is a central difference across bilinear cells, so it differs slightly from the analytic slope); at sampled points near shapes (rocks, pebbles, stems, prey, placed shapes), `isOpenGround` never returns true.
 - After tier 2: all surface tests, the Gruter test, the stepped and threaded determinism tests.
 - `TickProfile`: a test that attaching a profile does not change results (a run with and without one gives the same fingerprint).
 - The JVM benchmarks print the breakdown; the TV benchmark is the acceptance measurement.
