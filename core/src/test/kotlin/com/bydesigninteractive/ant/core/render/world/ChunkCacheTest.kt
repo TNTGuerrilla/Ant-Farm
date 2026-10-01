@@ -66,6 +66,25 @@ class ChunkCacheTest {
         }
     }
 
+    @Test
+    fun aFailingJobDoesNotStopLaterJobs() {
+        val cache = ChunkCache(4)
+        try {
+            cache.beforeBuild = { cx, _ -> if (cx == 8) throw IllegalStateException("test failure") }
+            cache.request(8, 8, null, emptyList())
+            cache.request(9, 8, null, emptyList())
+            val got = ArrayList<ChunkResult>()
+            val deadline = System.nanoTime() + 10_000_000_000L
+            while (got.isEmpty() && System.nanoTime() < deadline) {
+                got += cache.poll(2)
+                Thread.sleep(5)
+            }
+            assertEquals(listOf(9 to 8), got.map { it.cx to it.cy })
+        } finally {
+            cache.close()
+        }
+    }
+
     private fun maxZ(d: MeshData): Float {
         var m = -Float.MAX_VALUE
         for (k in 0 until d.vertexCount) m = maxOf(m, d.vertices[k * MeshData.STRIDE + 2])

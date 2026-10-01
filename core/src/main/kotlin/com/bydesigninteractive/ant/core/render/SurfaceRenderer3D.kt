@@ -250,7 +250,10 @@ class SurfaceRenderer3D(
         if (drawFood) foodMesh?.let { it.render(world, GL20.GL_TRIANGLES); vFood += it.numVertices }
         if (drawGrass) {
             grassChunks.clear()
-            for (slot in slots.values) if (slot.grass.isNotEmpty()) grassChunks += slot.grass
+            for ((key, slot) in slots) {
+                if (abs(key % CHUNKS - fcx) > RING || abs(key / CHUNKS - fcy) > RING) continue // no ground under it
+                if (slot.grass.isNotEmpty()) grassChunks += slot.grass
+            }
             vGrass += grass.draw(grassChunks, sky, camera, seconds) // blades are single triangles; culling is still off
         }
         if (drawAnts) {
@@ -324,7 +327,9 @@ class SurfaceRenderer3D(
             val old = slot.spoils
             val cells = if (abs(cx - fcx) <= 1 && abs(cy - fcy) <= 1) ChunkMesher.CELLS else ChunkMesher.COARSE_CELLS
             val relevel = cells != slot.cells
-            var changed = slot.requested == 0L || old == null || relevel || rocks !== slot.rockList || grassRocks !== slot.grassRockList
+            // A level change or a new rock list (rocks published after the first request) is requested at once.
+            val urgent = slot.requested == 0L || relevel || rocks !== slot.rockList
+            var changed = urgent || old == null || grassRocks !== slot.grassRockList
             val spoils = spoilScratch
             for (dy in -1..1) for (dx in -1..1) {
                 val nx = cx + dx
@@ -334,7 +339,7 @@ class SurfaceRenderer3D(
                 if (!changed && !sameSpoil(spoils[i], old!![i])) changed = true
             }
             // A new level is requested at once; the old meshes stay drawn until the new ones arrive.
-            if (changed && (slot.requested == 0L || relevel || now - slot.requestedAt >= REBUILD_NANOS)) {
+            if (changed && (urgent || now - slot.requestedAt >= REBUILD_NANOS)) {
                 val copy = spoils.copyOf()
                 slot.spoils = copy
                 slot.rockList = rocks

@@ -1,5 +1,7 @@
 package com.bydesigninteractive.ant.core.render.world
 
+import com.badlogic.gdx.Gdx
+import com.bydesigninteractive.ant.core.APP_LOG_TAG
 import com.bydesigninteractive.ant.sim.world.CHUNKS
 import com.bydesigninteractive.ant.sim.world.sdf.Blob
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -29,6 +31,9 @@ class ChunkCache(seed: Long) {
     private val results = ConcurrentLinkedQueue<ChunkResult>()
     private val versions = AtomicLong()
     @Volatile private var running = true
+
+    /** Test seam: called with a job's chunk coordinates just before it is built; may throw to simulate a failing job. */
+    @Volatile internal var beforeBuild: ((Int, Int) -> Unit)? = null
     private val thread = Thread(::loop, "chunk-mesher").apply {
         isDaemon = true
         start()
@@ -75,22 +80,33 @@ class ChunkCache(seed: Long) {
             while (running) {
                 val job = jobs.takeFirst()
                 if (job.cx !in 0 until CHUNKS || job.cy !in 0 until CHUNKS) continue
-                job.neighbours?.let { n ->
-                    for (dy in -1..1) for (dx in -1..1) {
-                        val nx = job.cx + dx
-                        val ny = job.cy + dy
-                        if ((dx == 0 && dy == 0) || nx !in 0 until CHUNKS || ny !in 0 until CHUNKS) continue
-                        mesher.setSpoil(nx, ny, n[(dx + 1) + (dy + 1) * 3])
-                    }
+                try {
+                    build(job)
+                } catch (e: InterruptedException) {
+                    throw e
+                } catch (e: Throwable) {
+                    Gdx.app?.error(APP_LOG_TAG, "chunk mesher failed on chunk (${job.cx}, ${job.cy}); skipping it", e)
                 }
-                mesher.setSpoil(job.cx, job.cy, job.spoil)
-                results += ChunkResult(
-                    job.cx, job.cy, job.cells, mesher.ground(job.cx, job.cy, job.cells), mesher.rocks(job.rocks),
-                    grass.tufts(job.cx, job.cy, mesher, job.grassRocks), job.version,
-                )
             }
         } catch (e: InterruptedException) {
             // closing
         }
+    }
+
+    private fun build(job: Job) {
+        beforeBuild?.invoke(job.cx, job.cy)
+        job.neighbours?.let { n ->
+            for (dy in -1..1) for (dx in -1..1) {
+                val nx = job.cx + dx
+                val ny = job.cy + dy
+                if ((dx == 0 && dy == 0) || nx !in 0 until CHUNKS || ny !in 0 until CHUNKS) continue
+                mesher.setSpoil(nx, ny, n[(dx + 1) + (dy + 1) * 3])
+            }
+        }
+        mesher.setSpoil(job.cx, job.cy, job.spoil)
+        results += ChunkResult(
+            job.cx, job.cy, job.cells, mesher.ground(job.cx, job.cy, job.cells), mesher.rocks(job.rocks),
+            grass.tufts(job.cx, job.cy, mesher, job.grassRocks), job.version,
+        )
     }
 }
