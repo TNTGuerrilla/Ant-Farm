@@ -27,6 +27,13 @@ import kotlin.math.sqrt
 class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true) {
     /** Objects placed at run time (tests now; debris in a later milestone). */
     val placed = ArrayList<Blob>()
+
+    /** SDF evaluations so far, for benchmarks. */
+    var evaluations = 0L
+
+    /** Open-ground fast-path hits and misses so far (counted by SurfaceWalk), for benchmarks. */
+    var fastHits = 0L
+    var fastMisses = 0L
     private val own = arrayOfNulls<List<Blob>>(CHUNKS * CHUNKS)
     private val near = arrayOfNulls<List<Blob>>(CHUNKS * CHUNKS)
     private val g = FloatArray(3)
@@ -36,6 +43,7 @@ class SurfaceSdf(private val map: SurfaceMap, private val rocks: Boolean = true)
      * surface, and it ignores shapes beyond [MARGIN].
      */
     fun distance(x: Float, y: Float, z: Float): Float {
+        evaluations++
         var d = map.ground.distance(x, y, z)
         val nearBlobs = blobsNear(x, y)
         for (i in nearBlobs.indices) {

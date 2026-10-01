@@ -54,6 +54,9 @@ class World(
     /** Recent feeding events, oldest first, for the last [FEED_WINDOW_TICKS] ticks. */
     val feedEvents = ArrayDeque<FeedEvent>()
 
+    /** Set to measure where each tick's time goes; null (no cost) otherwise. */
+    var profile: TickProfile? = null
+
     // Scratch vectors for surface walking (one simulation thread).
     internal val pos = FloatArray(3)
     internal val norm = FloatArray(3)
@@ -119,13 +122,45 @@ class World(
     fun exponential(mean: Float): Float = -ln(1f - rng.nextFloat()) * mean
 
     fun step() {
-        paths.refresh()
-        surface.step()
-        nest.stepPheromone(DT, params.buildPheromoneLifetime)
-        surfaceIndex.rebuild(ants)
-        for (a in ants) behave(a)
+        val p = profile
+        val sdf = surface.sdf
+        val e0 = sdf.evaluations
+        val h0 = surface.ground.samples
+        val f0 = sdf.fastHits
+        val m0 = sdf.fastMisses
+        timed(p, TickProfile.NEST) { paths.refresh() }
+        timed(p, TickProfile.FIELDS) { surface.step() }
+        timed(p, TickProfile.NEST) { nest.stepPheromone(DT, params.buildPheromoneLifetime) }
+        timed(p, TickProfile.INDEX) { surfaceIndex.rebuild(ants) }
+        if (p == null) {
+            for (a in ants) behave(a)
+        } else {
+            for (a in ants) {
+                val phase = if (a.space == Space.SURFACE) TickProfile.SURFACE_ANTS else TickProfile.NEST_ANTS
+                val t0 = System.nanoTime()
+                behave(a)
+                p.phaseNanos[phase] += System.nanoTime() - t0
+            }
+        }
         tick++
         while (feedEvents.isNotEmpty() && feedEvents.first().tick < tick - FEED_WINDOW_TICKS) feedEvents.removeFirst()
+        if (p != null) {
+            p.ticks++
+            p.sdfEvaluations += sdf.evaluations - e0
+            p.heightSamples += surface.ground.samples - h0
+            p.fastHits += sdf.fastHits - f0
+            p.fastMisses += sdf.fastMisses - m0
+        }
+    }
+
+    private inline fun timed(p: TickProfile?, phase: Int, block: () -> Unit) {
+        if (p == null) {
+            block()
+            return
+        }
+        val t0 = System.nanoTime()
+        block()
+        p.phaseNanos[phase] += System.nanoTime() - t0
     }
 
     private fun behave(a: Ant) = when (a.role) {

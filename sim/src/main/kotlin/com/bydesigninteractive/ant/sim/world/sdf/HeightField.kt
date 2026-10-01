@@ -24,6 +24,9 @@ class HeightField(private val seed: Long, private val spoil: ChunkedField) {
     private val grids = arrayOfNulls<ShortArray>(CHUNKS * CHUNKS)
     private val slopeScratch = FloatArray(2)
 
+    /** Height-and-slope samples so far, for benchmarks. */
+    var samples = 0L
+
     private fun at(grid: ShortArray, index: Int): Float = grid[index] * HEIGHT_STEP
 
     /** The seeded relief without spoil. */
@@ -73,6 +76,7 @@ class HeightField(private val seed: Long, private val spoil: ChunkedField) {
      * out[0] and out[1]. The slope is 0 along an axis where (x, y) lies beyond the map edge.
      */
     private fun heightAndSlope(x: Float, y: Float, out: FloatArray): Float {
+        samples++
         val cx = x.coerceIn(0f, MAX)
         val cy = y.coerceIn(0f, MAX)
         val kx = (cx / CHUNK_MM).toInt().coerceAtMost(CHUNKS - 1)

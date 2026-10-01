@@ -1,5 +1,6 @@
 package com.bydesigninteractive.ant.sim.scenario
 
+import com.bydesigninteractive.ant.sim.TickProfile
 import com.bydesigninteractive.ant.sim.World
 import com.bydesigninteractive.ant.sim.ant.AntState
 import com.bydesigninteractive.ant.sim.ant.Role
@@ -72,10 +73,13 @@ class SurfaceRunTest {
         }
         repeat(100) { w.step() } // warm up the JIT and the height grids
         val ticks = 60 * 20
+        val profile = TickProfile()
+        w.profile = profile
         val start = System.nanoTime()
         repeat(ticks) { w.step() }
         val msPerTick = (System.nanoTime() - start) / 1e6 / ticks
         println("BENCHMARK 1000 surface ants: %.2f ms per tick".format(java.util.Locale.ROOT, msPerTick))
+        println("BENCHMARK 1000 surface ants breakdown: " + profile.summary())
         assertTrue(msPerTick < 20.0, "$msPerTick ms per tick")
     }
 
@@ -85,6 +89,8 @@ class SurfaceRunTest {
         val w = Scenarios.starter(7)
         repeat(20 * 60 * 25) { w.step() } // 25 minutes to build trails and scent
         val ticks = 20 * 60 * 5
+        val profile = TickProfile()
+        w.profile = profile
         val start = System.nanoTime()
         repeat(ticks) { w.step() }
         val msPerTick = (System.nanoTime() - start) / 1e6 / ticks
@@ -96,6 +102,22 @@ class SurfaceRunTest {
                 java.util.Locale.ROOT, msPerTick, w.surface.trail.blockCount(), w.surface.homeScent.blockCount(), heapMb, w.feedEvents.size,
             ),
         )
+        println("BENCHMARK starter with trails breakdown: " + profile.summary())
         assertTrue(msPerTick < 20.0, "$msPerTick ms per tick")
+    }
+
+    /** The 1,000-ant colony after 5 simulated minutes, the scenario the TV must hold at 25 ms per tick. */
+    @Test
+    fun benchmarkTheLargeColony() {
+        val w = Scenarios.colony1000(3)
+        repeat(20 * 60 * 5) { w.step() }
+        val profile = TickProfile()
+        w.profile = profile
+        val ticks = 20 * 60
+        val start = System.nanoTime()
+        repeat(ticks) { w.step() }
+        val msPerTick = (System.nanoTime() - start) / 1e6 / ticks
+        println("BENCHMARK colony1000: %.2f ms per tick; %s".format(java.util.Locale.ROOT, msPerTick, profile.summary()))
+        assertTrue(msPerTick < 50.0, "$msPerTick ms per tick")
     }
 }

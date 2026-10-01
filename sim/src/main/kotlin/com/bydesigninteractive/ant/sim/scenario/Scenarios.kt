@@ -24,6 +24,12 @@ object Scenarios {
     }
 
     /**
+     * The 1,000-ant benchmark colony (M1b-2b): the starter layout with 800 foragers and 200
+     * diggers. Deliberately surface-heavy, a conservative stand-in for a mature colony.
+     */
+    fun colony1000(seed: Long): World = starter(seed, foragers = 800, diggers = 200)
+
+    /**
      * Gruter 2012: two identical feeders at equal [distance] on either side of the entrance, as
      * small food blobs on gently rolling ground with no rocks, so the geometry matches M1's test.
      */
