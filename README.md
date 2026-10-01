@@ -63,3 +63,14 @@ Google TV does not let adb start a dream directly (`cmd dreams` needs root and `
 ```
 
 Afterwards, put the old timeout and `screensaver_components` values back with `settings put`.
+
+The profile build is not debuggable and is what the TV runs; a debuggable build runs several times slower.
+
+To measure the simulation on a device without the screensaver, run the headless benchmark (it takes over the screen for a few minutes and closes itself):
+
+```powershell
+& $adb shell am start -n com.bydesigninteractive.ant/.BenchmarkActivity --es scenario colony1000 --es mode cost --ei warmup 300 --ei measure 60
+& $adb logcat -s AntFarm
+```
+
+`scenario` is `starter` or `colony1000`; `mode speed` with `--ef speed 4 --ei measure 30` runs it through the simulation thread instead.

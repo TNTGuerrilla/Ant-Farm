@@ -29,6 +29,18 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    buildTypes {
+        // Not debuggable and signed with the debug key: what the TV runs and what is measured
+        // there, until release signing arrives (M8). Debuggable builds run several times slower.
+        create("profile") {
+            initWith(getByName("debug"))
+            isDebuggable = false
+            isJniDebuggable = false
+            isMinifyEnabled = false
+            matchingFallbacks += listOf("release")
+        }
+    }
 }
 
 kotlin {

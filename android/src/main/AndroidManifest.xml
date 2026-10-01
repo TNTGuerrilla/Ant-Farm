@@ -24,6 +24,12 @@
             </intent-filter>
         </activity>
 
+        <!-- A headless simulation benchmark, started over adb; it has no launcher entry. -->
+        <activity
+            android:name=".BenchmarkActivity"
+            android:exported="true"
+            android:screenOrientation="landscape" />
+
         <service
             android:name=".AntDream"
             android:exported="true"
