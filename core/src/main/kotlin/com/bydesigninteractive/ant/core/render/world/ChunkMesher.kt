@@ -78,14 +78,20 @@ class ChunkMesher(private val seed: Long) {
 
     private val ico1 = Icosphere.build(1)
     private val ico2 = Icosphere.build(2)
+    private val ico3 by lazy { Icosphere.build(3) }
+    private val ico4 by lazy { Icosphere.build(4) }
 
     /** Smooth-shaded rocks: each vertex of an icosphere moved (from the rock ellipsoid) onto the rock's own surface, normals from its gradient. */
     fun rocks(blobs: List<Blob>): MeshData {
-        val b = MeshBuilder(blobs.size * 320 * 3 + 16)
+        val b = MeshBuilder(blobs.size * 1280 * 3 + 16)
         val p = FloatArray(3)
         val n = FloatArray(3)
         for (blob in blobs) {
-            val (verts, tris) = if (blob.reach < PEBBLE_REACH) ico1 else ico2
+            val level = rockSubdivision(blob.reach)
+            val (verts, tris) = when (level) { 1 -> ico1; 2 -> ico2; 3 -> ico3; else -> ico4 }
+            // Flat facets sag inside a convex rock; half the chord sag outward makes them straddle the surface.
+            val edgeAngle = ICOSAHEDRON_EDGE_ANGLE / (1 shl level)
+            val inflate = 0.5f * blob.reach * (1f - cos(edgeAngle / 2f))
             val pos = FloatArray(verts.size)
             val nor = FloatArray(verts.size)
             for (k in 0 until verts.size / 3) {
@@ -93,6 +99,7 @@ class ChunkMesher(private val seed: Long) {
                 p[1] = blob.cy + verts[k * 3 + 1] * blob.ry
                 p[2] = blob.cz + verts[k * 3 + 2] * blob.rz
                 projectOnto(blob, p, n)
+                p[0] += n[0] * inflate; p[1] += n[1] * inflate; p[2] += n[2] * inflate
                 p.copyInto(pos, k * 3)
                 n.copyInto(nor, k * 3)
             }
@@ -103,6 +110,14 @@ class ChunkMesher(private val seed: Long) {
             }
         }
         return b.build()
+    }
+
+    /** Icosphere subdivision for a rock of [reach] mm: finer for bigger rocks so the facet sag stays small. */
+    fun rockSubdivision(reach: Float): Int = when {
+        reach < PEBBLE_REACH -> 1
+        reach < 30f -> 2
+        reach < LARGE_ROCK_REACH -> 3
+        else -> 4
     }
 
     /** The rock's colour factor on the stone grey, 0.9 to 1.1, deterministic per seed and rock position. */
@@ -330,6 +345,9 @@ class ChunkMesher(private val seed: Long) {
         private const val JITTER_SALT = 0x717L
         private const val SPECK_SALT = 0x5BECL
         const val PEBBLE_REACH = 6f
+        /** Reach from which rocks get the finest icosphere (5,120 triangles). */
+        const val LARGE_ROCK_REACH = 80f
+        private const val ICOSAHEDRON_EDGE_ANGLE = 1.1071487f // radians, about 63.43 degrees
         const val PROJECT_STEPS = 12
         const val APHIDS = 8
         const val STONE_R = 128f / 255f

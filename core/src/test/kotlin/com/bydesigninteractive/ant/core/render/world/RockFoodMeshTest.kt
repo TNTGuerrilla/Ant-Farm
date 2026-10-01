@@ -58,12 +58,41 @@ class RockFoodMeshTest {
         val small = m.rocks(listOf(pebble))
         val big = m.rocks(listOf(rock))
         assertEquals(80 * 3, small.vertexCount)
-        assertEquals(320 * 3, big.vertexCount)
+        assertEquals(1280 * 3, big.vertexCount)
         // smooth: a vertex's normal points away from the rock centre and is unit length
         val v = big.vertices
         val nx = v[3]; val ny = v[4]; val nz = v[5]
         assertEquals(1f, sqrt(nx * nx + ny * ny + nz * nz), 1e-3f)
         assertTrue((v[0] - rock.cx) * nx + (v[1] - rock.cy) * ny + (v[2] - rock.cz) * nz > 0f)
+    }
+
+    @Test
+    fun rockFacetsStayCloseToTheTrueSurface() {
+        val big = Blob(4300f, 4000f, 40f, 90f, 75f, 50f, 0.15f, 7.7f)
+        val m = ChunkMesher(4)
+        for (b in listOf(rock, big)) {
+            val v = m.rocks(listOf(b)).vertices
+            val s = MeshData.STRIDE
+            val ds = ArrayList<Float>()
+            val lattice = 6
+            var i = 0
+            while (i < v.size) {
+                for (a in 0..lattice) for (c in 0..lattice - a) {
+                    val u = a.toFloat() / lattice
+                    val w = c.toFloat() / lattice
+                    val t = 1f - u - w
+                    fun at(o: Int) = u * v[i + s + o] + w * v[i + 2 * s + o] + t * v[i + o]
+                    ds += b.distance(at(0), at(1), at(2))
+                }
+                i += 3 * s
+            }
+            ds.sort()
+            val p1 = ds[(ds.size * 0.01f).toInt()]
+            val p99 = ds[(ds.size * 0.99f).toInt().coerceAtMost(ds.size - 1)]
+            println("rock reach ${b.reach}: p1 $p1 p99 $p99 min ${ds.first()} max ${ds.last()}")
+            assertTrue(p1 >= -0.5f && p99 <= 0.3f, "p1 $p1 p99 $p99 outside [-0.5, 0.3] for reach ${b.reach}")
+            assertTrue(ds.first() >= -1.0f && ds.last() <= 0.5f, "min ${ds.first()} max ${ds.last()} outside [-1.0, 0.5] for reach ${b.reach}")
+        }
     }
 
     @Test
