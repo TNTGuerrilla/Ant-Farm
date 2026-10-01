@@ -135,14 +135,19 @@ class AntApp(private val label: String, private val world: World, private val tv
         if (instanced) {
             look = try {
                 SurfaceRenderer3D(seed, published)
-            } catch (e: IllegalStateException) {
-                Gdx.app.error(APP_LOG_TAG, "low-poly view failed, using the debug view: ${e.message}")
+            } catch (e: Exception) {
+                Gdx.app.error(APP_LOG_TAG, "low-poly view failed, using the debug view: ${e.message}", e)
                 null
             }
+        } else {
+            Gdx.app.error(APP_LOG_TAG, "GL 3 instancing unavailable: the low-poly view is disabled, using the 3D debug view")
         }
         runner = SimRunner(world, published)
         runner.start()
     }
+
+    /** The view's name for the HUD and log: the 3D view is "surface, 3D" when the low-poly renderer draws it. */
+    private fun viewTitle(): String = if (view == View.SURFACE_3D && look != null) "surface, 3D" else view.title
 
     /** Compiles each of the look's programs once and logs the result, so a shader error shows on the first run. */
     private fun checkShaders() {
@@ -195,7 +200,7 @@ class AntApp(private val label: String, private val world: World, private val tv
             val h = published.hud
             Gdx.app.log(
                 APP_LOG_TAG,
-                "view ${view.title} fps ${Gdx.graphics.framesPerSecond} p50 ${frames.percentile(0.5f)} " +
+                "view ${viewTitle()} fps ${Gdx.graphics.framesPerSecond} p50 ${frames.percentile(0.5f)} " +
                     "p99 ${frames.percentile(0.99f)} max ${frames.max()} slow ${frames.countOver(25f)}/${frames.count} tick ${h.tick} " +
                     "ticks/s ${f1(h.ticksPerSecond)} ms/tick ${f2(h.msPerTickAvg)} max ${f2(h.msPerTickMax)} resets ${h.resets}",
             )
@@ -311,7 +316,7 @@ class AntApp(private val label: String, private val world: World, private val tv
         if (hudAge >= HUD_EVERY_S) {
             hudAge = 0f
             val speed = if (paused) "paused" else "${SPEEDS[speedIndex].toInt()}x"
-            val lines = DebugReadout.lines(published.hud, view.title, speed, Gdx.graphics.framesPerSecond, frames, followed(), help)
+            val lines = DebugReadout.lines(published.hud, viewTitle(), speed, Gdx.graphics.framesPerSecond, frames, followed(), help)
             val failure = published.failed
             hudLines = if (failure == null) lines else lines + "simulation stopped: ${failure.message ?: failure.javaClass.simpleName}"
         }

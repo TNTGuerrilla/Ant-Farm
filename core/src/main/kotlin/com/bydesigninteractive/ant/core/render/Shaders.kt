@@ -5,7 +5,7 @@ import com.badlogic.gdx.graphics.glutils.ShaderProgram
 import com.bydesigninteractive.ant.core.render.sky.SkyState
 
 /**
- * The GLSL for the low-poly look, in the legacy style that both the desktop launcher's GL 3.2 core
+ * The GLSL for the low-poly look, in the legacy style that both the desktop launcher's GL 3.3 core
  * prepend and GLES 3 accept. All world shaders share one light model: a directional light plus
  * ambient, then linear fog toward the fog colour by distance from the eye. Positions are world
  * millimetres.
@@ -14,6 +14,12 @@ import com.bydesigninteractive.ant.core.render.sky.SkyState
  * both stages to have the same precision, and the stages' default float precisions differ.
  */
 object Shaders {
+    /**
+     * Scales the day cycle's sun and ambient light before shading. Midday ambient plus sun is about
+     * 1.45 on flat ground; times 0.7 that is about 1, so lit ground shows its palette colour.
+     */
+    const val EXPOSURE = 0.7f
+
     private const val PRECISION = "#ifdef GL_ES\nprecision mediump float;\n#endif\n"
 
     private const val LIGHT = """
@@ -179,12 +185,12 @@ void main() { gl_FragColor = vec4(mix(u_horizon, u_top, smoothstep(0.35, 1.0, v_
     fun shadows() = compile(SHADOW_VERT, SHADOW_FRAG)
     fun sky() = compile(SKY_VERT, SKY_FRAG)
 
-    /** Sets the light, fog and camera uniforms every world shader shares. The program must be bound. */
+    /** Sets the light (scaled by [EXPOSURE]), fog and camera uniforms every world shader shares. The program must be bound. */
     fun applySky(p: ShaderProgram, sky: SkyState, camera: Camera) {
         p.setUniformMatrix("u_projView", camera.combined)
         p.setUniformf("u_sunDir", sky.sunDir[0], sky.sunDir[1], sky.sunDir[2])
-        p.setUniformf("u_sunColor", sky.sunColor[0], sky.sunColor[1], sky.sunColor[2])
-        p.setUniformf("u_ambient", sky.ambient[0], sky.ambient[1], sky.ambient[2])
+        p.setUniformf("u_sunColor", sky.sunColor[0] * EXPOSURE, sky.sunColor[1] * EXPOSURE, sky.sunColor[2] * EXPOSURE)
+        p.setUniformf("u_ambient", sky.ambient[0] * EXPOSURE, sky.ambient[1] * EXPOSURE, sky.ambient[2] * EXPOSURE)
         p.setUniformf("u_fogColor", sky.fogColor[0], sky.fogColor[1], sky.fogColor[2])
         p.setUniformf("u_fogStart", sky.fogStart)
         p.setUniformf("u_fogEnd", sky.fogEnd)
@@ -194,7 +200,11 @@ void main() { gl_FragColor = vec4(mix(u_horizon, u_top, smoothstep(0.35, 1.0, v_
     private fun compile(vert: String, frag: String): ShaderProgram {
         ShaderProgram.pedantic = false
         val p = ShaderProgram(vert, frag)
-        check(p.isCompiled) { "shader failed to compile: ${p.log}" }
+        if (!p.isCompiled) {
+            val log = p.log
+            p.dispose()
+            error("shader failed to compile: $log")
+        }
         return p
     }
 }

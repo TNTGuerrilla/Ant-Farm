@@ -5,6 +5,7 @@ import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.Mesh
 import com.badlogic.gdx.graphics.VertexAttribute
 import com.badlogic.gdx.graphics.VertexAttributes
+import com.badlogic.gdx.graphics.glutils.GLVersion
 import com.badlogic.gdx.graphics.glutils.ShaderProgram
 import com.bydesigninteractive.ant.core.APP_LOG_TAG
 
@@ -16,6 +17,10 @@ import com.bydesigninteractive.ant.core.APP_LOG_TAG
 object InstancingCheck {
     fun run(): Boolean {
         if (Gdx.gl30 == null) return false
+        // Desktop GL has glVertexAttribDivisor only from 3.3; calling it on a 3.2 context aborts the JVM
+        // (LWJGL raises a fatal native error, not an exception), so the draw below cannot be the only test.
+        val v = Gdx.graphics.glVersion
+        if (v.type == GLVersion.Type.OpenGL && !v.isVersionEqualToOrHigher(3, 3)) return false
         var mesh: Mesh? = null
         var shader: ShaderProgram? = null
         return try {
@@ -24,8 +29,10 @@ object InstancingCheck {
             m.setVertices(floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f, 0f))
             m.enableInstancedRendering(true, 2, VertexAttribute(VertexAttributes.Usage.Generic, 4, "i_pos"))
             m.setInstanceData(floatArrayOf(0f, 0f, 0f, 0f, 0.5f, 0f, 0f, 0f))
+            // i_pos must stay live (a compiler drops unused attributes, and then no divisor is set);
+            // the +10 puts the triangles outside the clip volume, so nothing is drawn.
             val sh = ShaderProgram(
-                "attribute vec3 a_position;\nattribute vec4 i_pos;\nvoid main() { gl_Position = vec4(a_position + i_pos.xyz, 1.0) * 0.0; }\n",
+                "attribute vec3 a_position;\nattribute vec4 i_pos;\nvoid main() { gl_Position = vec4(a_position + i_pos.xyz + vec3(10.0), 1.0); }\n",
                 "#ifdef GL_ES\nprecision mediump float;\n#endif\nvoid main() { gl_FragColor = vec4(0.0); }\n",
             )
             shader = sh

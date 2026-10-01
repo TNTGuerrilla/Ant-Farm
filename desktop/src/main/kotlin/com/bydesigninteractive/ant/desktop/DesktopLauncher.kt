@@ -12,7 +12,7 @@ fun main(args: Array<String>) {
     useLegacyShadersOnCoreProfile()
     val config = Lwjgl3ApplicationConfiguration().apply {
         setTitle("Ant Farm")
-        setOpenGLEmulation(Lwjgl3ApplicationConfiguration.GLEmulation.GL30, 3, 2)
+        setOpenGLEmulation(Lwjgl3ApplicationConfiguration.GLEmulation.GL30, 3, 3)
         setWindowedMode(1600, 900)
         useVsync(true)
         setForegroundFPS(0)
@@ -23,8 +23,9 @@ fun main(args: Array<String>) {
 }
 
 /**
- * The 3.2 core profile rejects GLSL without a `#version` line, and libGDX 1.14.2 does not add one
- * on desktop, so every shader (ours and SpriteBatch's, ModelBatch's and BitmapFont's) gets this
+ * The window asks for GL 3.3 core, the first desktop version with `glVertexAttribDivisor` (which
+ * instancing needs). The core profile rejects GLSL without a `#version` line, and libGDX 1.14.2
+ * does not add one on desktop, so every shader (ours and SpriteBatch's, ModelBatch's and BitmapFont's) gets this
  * GLSL 1.50 header that maps the legacy keywords onto their core equivalents. Must run before any
  * [ShaderProgram] is created.
  */
