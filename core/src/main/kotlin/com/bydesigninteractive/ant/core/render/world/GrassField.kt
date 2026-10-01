@@ -2,6 +2,7 @@ package com.bydesigninteractive.ant.core.render.world
 
 import com.bydesigninteractive.ant.sim.util.hash
 import com.bydesigninteractive.ant.sim.util.unit
+import com.bydesigninteractive.ant.sim.world.sdf.Blob
 import java.util.Random
 import kotlin.math.cos
 import kotlin.math.floor
@@ -9,16 +10,18 @@ import kotlin.math.sin
 
 /**
  * Patchy grass: candidate spots on a jittered 62.5 mm grid, kept where a seeded 300 mm value-noise
- * "patchiness" is high, and thinned to nothing where spoil is deep (Lasius niger buries
- * vegetation under its mound). Tufts are scenery only. One base tuft of 9 blades is drawn
+ * "patchiness" is high, thinned to nothing where spoil is deep (Lasius niger buries
+ * vegetation under its mound), and left out within [ROCK_CLEARANCE] of a rock's footprint. Tufts are scenery only. One base tuft of 9 blades is drawn
  * instanced; each instance picks how many blades show, its rotation, scale, tint and sway phase.
  */
 class GrassField(private val seed: Long) {
     /**
      * Instance data of the tufts in chunk (cx, cy), [INSTANCE_FLOATS] floats each: x, y, z, rotation (rad),
      * scale, blade count (5 to 9), tint (0.8 to 1.15), sway phase (0 to 6.28). Deterministic per seed and chunk.
+     * A spot inside the horizontal footprint of any of [rocks] (its reach around its centre, plus
+     * [ROCK_CLEARANCE]) gets no tuft; pass the chunk's rocks and any neighbour's that reach into it.
      */
-    fun tufts(cx: Int, cy: Int, mesher: ChunkMesher): FloatArray {
+    fun tufts(cx: Int, cy: Int, mesher: ChunkMesher, rocks: List<Blob> = emptyList()): FloatArray {
         val out = ArrayList<Float>()
         for (j in 0 until SPOTS) for (i in 0 until SPOTS) {
             val gi = cx * SPOTS + i
@@ -30,6 +33,7 @@ class GrassField(private val seed: Long) {
             val bare = (mesher.spoilAt(x, y) / SPOIL_BARE).coerceIn(0f, 1f)
             val keep = ((patch - PATCH_LOW) / (1f - PATCH_LOW)).coerceIn(0f, 1f) * (1f - bare)
             if (r.nextFloat() >= keep) continue
+            if (underRock(x, y, rocks)) continue
             out += x
             out += y
             out += mesher.heights.height(x, y)
@@ -40,6 +44,18 @@ class GrassField(private val seed: Long) {
             out += r.nextFloat() * 6.2832f
         }
         return out.toFloatArray()
+    }
+
+    /** Whether (x, y) lies within [ROCK_CLEARANCE] of any rock's horizontal footprint. */
+    private fun underRock(x: Float, y: Float, rocks: List<Blob>): Boolean {
+        for (i in rocks.indices) {
+            val b = rocks[i]
+            val r = b.reach + ROCK_CLEARANCE
+            val dx = x - b.cx
+            val dy = y - b.cy
+            if (dx * dx + dy * dy < r * r) return true
+        }
+        return false
     }
 
     /** Smooth seeded value noise, 0 to 1, at a 300 mm scale. */
@@ -99,6 +115,8 @@ class GrassField(private val seed: Long) {
         const val SPOT_MM = 62.5f // CHUNK_MM / SPOTS
         const val PATCH_MM = 300f
         const val PATCH_LOW = 0.38f
+        /** Grass keeps this far (mm) outside a rock's footprint. */
+        const val ROCK_CLEARANCE = 3f
         private const val SPOT_SALT = 0x6A55L
         private const val PATCH_SALT = 0x9A7CL
         private const val TUFT_SALT = 0x7F7L

@@ -14,21 +14,35 @@ import com.bydesigninteractive.ant.core.render.Shaders
 import com.bydesigninteractive.ant.core.render.sky.DayCycle
 import com.bydesigninteractive.ant.core.render.sky.SkyState
 import com.bydesigninteractive.ant.sim.ant.Space
+import com.bydesigninteractive.ant.sim.util.unit
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
 
 /**
  * Packs surface ants into instance records of [FLOATS] floats: position and gait phase, forward
- * and gaster fill (crop), up and carry code. Ants within [NEAR_MM] of the eye go to the near
- * array, the rest to the far one; nest ants are skipped. Pure, so it unit-tests on the JVM.
+ * (the [TurnSmoother]'s drawn forward) and gaster fill (crop), up and carry code, and the model
+ * scale. Ants within [NEAR_MM] of the eye go to the near array, the rest to the far one; nest
+ * ants are skipped. Pure, so it unit-tests on the JVM.
  */
 object AntInstances {
-    const val FLOATS = 12
+    const val FLOATS = 13
     const val NEAR_MM = 500f
 
+    /** The model's body length (mm), from the gaster tip (x = -2.85) to the front of the head (x = 2.6). */
+    const val MODEL_LENGTH_MM = 5.45f
+    const val MIN_LENGTH_MM = 3f
+    const val MAX_LENGTH_MM = 5f
+    private const val SIZE_SALT = 0x512EL
+
+    /** Ant [id]'s drawn body length (mm), fixed per id: uniform from [MIN_LENGTH_MM] to [MAX_LENGTH_MM] by a hash. */
+    fun bodyLength(id: Int): Float = MIN_LENGTH_MM + (MAX_LENGTH_MM - MIN_LENGTH_MM) * unit(SIZE_SALT, id, 0).toFloat()
+
+    /** The uniform model scale that draws ant [id] at its [bodyLength]. */
+    fun scale(id: Int): Float = bodyLength(id) / MODEL_LENGTH_MM
+
     /** Fills [near] and [far] from [poses]; [counts] receives the near (0) and far (1) record counts. Records past an array's end are dropped. */
-    fun fill(poses: List<AntPose>, animator: AntAnimator, eyeX: Float, eyeY: Float, eyeZ: Float, near: FloatArray, far: FloatArray, counts: IntArray) {
+    fun fill(poses: List<AntPose>, animator: AntAnimator, turns: TurnSmoother, eyeX: Float, eyeY: Float, eyeZ: Float, near: FloatArray, far: FloatArray, counts: IntArray) {
         counts[0] = 0
         counts[1] = 0
         for (i in poses.indices) {
@@ -43,8 +57,9 @@ object AntInstances {
             val o = counts[k] * FLOATS
             if (o + FLOATS > out.size) continue
             out[o] = p.x; out[o + 1] = p.y; out[o + 2] = p.z; out[o + 3] = animator.phase(p.id)
-            out[o + 4] = p.fx; out[o + 5] = p.fy; out[o + 6] = p.fz; out[o + 7] = p.crop
+            out[o + 4] = turns.fx(p.id, p.fx); out[o + 5] = turns.fy(p.id, p.fy); out[o + 6] = turns.fz(p.id, p.fz); out[o + 7] = p.crop
             out[o + 8] = p.nx; out[o + 9] = p.ny; out[o + 10] = p.nz; out[o + 11] = p.carry.toFloat()
+            out[o + 12] = scale(p.id)
             counts[k]++
         }
     }
@@ -53,7 +68,8 @@ object AntInstances {
 /**
  * Draws all surface ants with GL 3 instancing: soft shadows first (blended, no depth write), then
  * the detailed model for ants within [AntInstances.NEAR_MM] of the eye and the simple one beyond.
- * The vertex shader poses the legs, swells the gaster and shows the carried piece. Render thread only.
+ * The vertex shader poses the legs, swells the gaster, shows the carried piece and scales each ant
+ * to its own size. Render thread only.
  *
  * GL state on return: blending and face culling off, depth writes on, depth test unchanged.
  */
@@ -82,9 +98,9 @@ class AntRenderer : Disposable {
         }
     }
 
-    fun draw(poses: List<AntPose>, animator: AntAnimator, sky: SkyState, camera: Camera) {
+    fun draw(poses: List<AntPose>, animator: AntAnimator, turns: TurnSmoother, sky: SkyState, camera: Camera) {
         if (poses.size > capacity) grow(poses.size * 2)
-        AntInstances.fill(poses, animator, camera.position.x, camera.position.y, camera.position.z, near, far, counts)
+        AntInstances.fill(poses, animator, turns, camera.position.x, camera.position.y, camera.position.z, near, far, counts)
         if (counts[0] + counts[1] == 0) return
         val gl = Gdx.gl
         val strength = shadowStrength(sky)
@@ -131,6 +147,7 @@ class AntRenderer : Disposable {
         VertexAttribute(VertexAttributes.Usage.Generic, 4, "i_pos"),
         VertexAttribute(VertexAttributes.Usage.Generic, 4, "i_fwd"),
         VertexAttribute(VertexAttributes.Usage.Generic, 4, "i_up"),
+        VertexAttribute(VertexAttributes.Usage.Generic, 1, "i_scale"),
     )
 
     private fun model(v: FloatArray): Mesh {
@@ -152,7 +169,7 @@ class AntRenderer : Disposable {
         return m
     }
 
-    /** A soft elliptic disc, 5.2 by 2.8 mm: opaque centre fading to nothing at the rim. */
+    /** A soft elliptic disc, 5.2 by 2.8 mm at model scale (the shader scales it per ant): opaque centre fading to nothing at the rim. */
     private fun discMesh(): Mesh {
         val seg = 12
         val v = FloatArray(seg * 3 * 4)

@@ -28,6 +28,7 @@ import com.bydesigninteractive.ant.core.render.Shaders
 import com.bydesigninteractive.ant.core.render.Sprites
 import com.bydesigninteractive.ant.core.render.SurfaceRenderer3D
 import com.bydesigninteractive.ant.core.render.SurfaceTopRenderer
+import com.bydesigninteractive.ant.core.render.ant.TurnSmoother
 import com.bydesigninteractive.ant.core.render.sky.DayCycle
 import com.bydesigninteractive.ant.core.stub.FrameStats
 import com.bydesigninteractive.ant.core.ui.DebugReadout
@@ -66,6 +67,7 @@ class AntApp(private val label: String, private val world: World, private val tv
     private lateinit var antTextures: Array<Texture>
     private lateinit var antRegions: Array<TextureRegion>
     private val animator = AntAnimator()
+    private val turns = TurnSmoother()
     private lateinit var chunkTextures: ChunkTextures
     private lateinit var nestRenderer: NestRenderer
     private lateinit var topRenderer: SurfaceTopRenderer
@@ -134,7 +136,7 @@ class AntApp(private val label: String, private val world: World, private val tv
         checkShaders()
         if (instanced) {
             look = try {
-                SurfaceRenderer3D(seed, published)
+                SurfaceRenderer3D(seed, published, entranceX, entranceY)
             } catch (e: Exception) {
                 Gdx.app.error(APP_LOG_TAG, "low-poly view failed, using the debug view: ${e.message}", e)
                 null
@@ -173,7 +175,7 @@ class AntApp(private val label: String, private val world: World, private val tv
         val raw = Gdx.graphics.deltaTime
         val dt = raw.coerceAtMost(0.25f)
         frames.add(raw * 1000f)
-        updatePoses()
+        updatePoses(dt)
         if (!tv) pollPan(dt)
         chunkTextures.newFrame()
         Gdx.gl.glClearColor(0.05f, 0.04f, 0.03f, 1f)
@@ -207,8 +209,8 @@ class AntApp(private val label: String, private val world: World, private val tv
         }
     }
 
-    /** Takes the newest snapshot, if any, and fills the pose pool for this frame. */
-    private fun updatePoses() {
+    /** Takes the newest snapshot, if any, and fills the pose pool for this frame, [dt] seconds after the last. */
+    private fun updatePoses(dt: Float) {
         published.snapshots.takeFresh()?.let { states.accept(it) }
         val alpha = if (paused) 1f else states.alpha(System.nanoTime(), published.intervalNanos)
         while (poses.size < states.count) poses += AntPose()
@@ -217,6 +219,7 @@ class AntApp(private val label: String, private val world: World, private val tv
             val p = poses[i]
             states.blend(i, alpha, p)
             animator.observe(p)
+            turns.observe(p, dt)
         }
         drawn.size = posesCount
     }
@@ -300,7 +303,7 @@ class AntApp(private val label: String, private val world: World, private val tv
         }
         if (look != null) {
             // Seconds into the current simulated day, wrapped in Long ticks so the Float stays precise on long runs.
-            look.draw(chase, drawn, states.foods, (states.tick % TICKS_PER_DAY) * DT, animator)
+            look.draw(chase, drawn, states.foods, (states.tick % TICKS_PER_DAY) * DT, animator, turns)
         } else {
             renderer3d.draw(chase, drawn, states.foods)
         }

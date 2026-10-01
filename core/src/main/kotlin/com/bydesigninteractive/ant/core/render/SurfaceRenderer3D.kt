@@ -14,10 +14,13 @@ import com.bydesigninteractive.ant.core.engine.FoodView
 import com.bydesigninteractive.ant.core.engine.OverlayChunk
 import com.bydesigninteractive.ant.core.engine.Published
 import com.bydesigninteractive.ant.core.render.ant.AntRenderer
+import com.bydesigninteractive.ant.core.render.ant.TurnSmoother
 import com.bydesigninteractive.ant.core.render.sky.DayCycle
 import com.bydesigninteractive.ant.core.render.sky.SkyState
 import com.bydesigninteractive.ant.core.render.world.ChunkCache
 import com.bydesigninteractive.ant.core.render.world.ChunkMesher
+import com.bydesigninteractive.ant.core.render.world.EntranceMesh
+import com.bydesigninteractive.ant.core.render.world.GrassField
 import com.bydesigninteractive.ant.core.render.world.GrassRenderer
 import com.bydesigninteractive.ant.core.render.world.MeshData
 import com.bydesigninteractive.ant.sim.world.CHUNKS
@@ -33,10 +36,18 @@ import kotlin.math.floor
  * at most every [REBUILD_NANOS] per chunk. The sky state comes from the [DayCycle]. Works in
  * simulation coordinates (mm, z up). Render thread only, except the cache's own thread.
  *
- * GL state on return matches what the debug renderer's ModelBatch leaves: depth test, face culling
- * and blending off, depth writes on, so the HUD's SpriteBatch draws over it unchanged.
+ * The nest entrance at ([entranceX], [entranceY]) (immutable, read before the simulation thread
+ * starts) is drawn as an [EntranceMesh] dip, through the stencil buffer when the window has one.
+ *
+ * GL state on return matches what the debug renderer's ModelBatch leaves: depth test, face culling,
+ * blending and stencil test off, depth writes on, so the HUD's SpriteBatch draws over it unchanged.
  */
-class SurfaceRenderer3D(seed: Long, private val published: Published) : Disposable {
+class SurfaceRenderer3D(
+    seed: Long,
+    private val published: Published,
+    private val entranceX: Float,
+    private val entranceY: Float,
+) : Disposable {
     val camera = PerspectiveCamera(FOV, 1f, 1f).apply {
         near = 2f
         far = 3000f
@@ -88,6 +99,9 @@ class SurfaceRenderer3D(seed: Long, private val published: Published) : Disposab
         var combined: List<Blob>? = null
         var ownRocks: List<Blob>? = null
         var placed: List<Blob>? = null
+        var grassRockList: List<Blob>? = null
+        var grassRocks: List<Blob>? = null
+        var grassSources: Array<List<Blob>?>? = null
         var requestedAt = 0L
         var requested = 0L
     }
@@ -100,6 +114,9 @@ class SurfaceRenderer3D(seed: Long, private val published: Published) : Disposab
     /** The overlay object last seen per chunk: its spoil is compared only when a new one is published. */
     private val seenOverlay = HashMap<Int, OverlayChunk>()
 
+    /** Scratch for the sources of one chunk's grass rocks (3 by 3 published lists, then the placed list). */
+    private val grassScratch = arrayOfNulls<List<Blob>>(10)
+
     /** Scratch for one chunk's 3 by 3 spoil block; copied only when a request is made. */
     private val spoilScratch = arrayOfNulls<FloatArray>(9)
 
@@ -109,6 +126,14 @@ class SurfaceRenderer3D(seed: Long, private val published: Published) : Disposab
     private var lastFcy = Int.MIN_VALUE
     private var foodMesh: Mesh? = null
     private var foodsDrawn: List<FoodView>? = null
+    private var entranceCone: Mesh? = null
+    private var entranceLid: Mesh? = null
+
+    /** Set when mirrored spoil changes, as the ground height at the entrance may have moved. */
+    private var entranceDirty = true
+
+    /** Whether the window has a stencil buffer, so the entrance can show its dip below the ground facets. */
+    private val stencil = Gdx.graphics.bufferFormat.stencil > 0
 
     fun resize(w: Int, h: Int) {
         camera.viewportWidth = w.toFloat()
@@ -119,10 +144,10 @@ class SurfaceRenderer3D(seed: Long, private val published: Published) : Disposab
     fun groundHeight(x: Float, y: Float): Float = local.heights.height(x, y)
 
     /**
-     * Draws the sky, ground, specks, rocks, food, grass and ants seen from [chase]. [seconds] is the time into
+     * Draws the sky, ground, specks, rocks, the entrance, food, grass and ants seen from [chase]. [seconds] is the time into
      * the day cycle in seconds (keep it small, wrapped by the caller, for float precision).
      */
-    fun draw(chase: ChaseCamera3, poses: List<AntPose>, foods: List<FoodView>, seconds: Float, animator: AntAnimator) {
+    fun draw(chase: ChaseCamera3, poses: List<AntPose>, foods: List<FoodView>, seconds: Float, animator: AntAnimator, turns: TurnSmoother) {
         camera.position.set(chase.eyeX, chase.eyeY, chase.eyeZ)
         camera.up.set(chase.upX, chase.upY, chase.upZ)
         camera.lookAt(chase.targetX, chase.targetY, chase.targetZ)
@@ -137,8 +162,15 @@ class SurfaceRenderer3D(seed: Long, private val published: Published) : Disposab
             foodMesh = upload(local.foods(foods))
             foodsDrawn = foods
         }
+        if (entranceDirty) {
+            entranceDirty = false
+            entranceCone?.dispose()
+            entranceLid?.dispose()
+            entranceCone = upload(EntranceMesh.cone(entranceX, entranceY, local.heights::height))
+            entranceLid = upload(EntranceMesh.lid(entranceX, entranceY, local.heights::height))
+        }
         val gl = Gdx.gl
-        gl.glClear(GL20.GL_DEPTH_BUFFER_BIT)
+        gl.glClear(if (stencil) GL20.GL_DEPTH_BUFFER_BIT or GL20.GL_STENCIL_BUFFER_BIT else GL20.GL_DEPTH_BUFFER_BIT)
         gl.glDisable(GL20.GL_BLEND)
         gl.glDisable(GL20.GL_DEPTH_TEST)
         gl.glDisable(GL20.GL_CULL_FACE)
@@ -159,16 +191,52 @@ class SurfaceRenderer3D(seed: Long, private val published: Published) : Disposab
             slot.ground?.render(world, GL20.GL_TRIANGLES)
             slot.rocks?.render(world, GL20.GL_TRIANGLES)
         }
+        // Beyond the ring there is no ground drawn (or spoil mirrored) to set it in.
+        if (abs(floor(entranceX / CHUNK_MM).toInt() - fcx) <= RING && abs(floor(entranceY / CHUNK_MM).toInt() - fcy) <= RING) drawEntrance()
         gl.glDisable(GL20.GL_CULL_FACE) // stems and food lumps are thin; draw both sides
         foodMesh?.render(world, GL20.GL_TRIANGLES)
         grassChunks.clear()
         for (slot in slots.values) if (slot.grass.isNotEmpty()) grassChunks += slot.grass
         grass.draw(grassChunks, sky, camera, seconds) // blades are single triangles; culling is still off
-        ants.draw(poses, animator, sky, camera)
+        ants.draw(poses, animator, turns, sky, camera)
         gl.glDisable(GL20.GL_DEPTH_TEST)
         gl.glDisable(GL20.GL_CULL_FACE)
         gl.glDisable(GL20.GL_BLEND)
         gl.glDepthMask(true)
+    }
+
+    /**
+     * Draws the entrance with the world shader bound and back faces culled. With a stencil buffer,
+     * the lid marks where the opening is visible (depth tested against the ground, no colour or
+     * depth written), then the cone is drawn there regardless of depth, which shows the dip under
+     * the ground's facets; culling leaves one interior face per pixel. Without one, the cone is
+     * drawn plainly and only its part above the facets shows. Leaves culling on and depth as found.
+     */
+    private fun drawEntrance() {
+        val cone = entranceCone ?: return
+        val lid = entranceLid
+        val gl = Gdx.gl
+        if (!stencil || lid == null) {
+            cone.render(world, GL20.GL_TRIANGLES)
+            return
+        }
+        gl.glEnable(GL20.GL_STENCIL_TEST)
+        gl.glStencilMask(0xFF)
+        gl.glStencilFunc(GL20.GL_ALWAYS, 1, 0xFF)
+        gl.glStencilOp(GL20.GL_KEEP, GL20.GL_KEEP, GL20.GL_REPLACE)
+        gl.glColorMask(false, false, false, false)
+        gl.glDepthMask(false)
+        gl.glDisable(GL20.GL_CULL_FACE)
+        lid.render(world, GL20.GL_TRIANGLES)
+        gl.glColorMask(true, true, true, true)
+        gl.glEnable(GL20.GL_CULL_FACE)
+        gl.glStencilFunc(GL20.GL_EQUAL, 1, 0xFF)
+        gl.glStencilOp(GL20.GL_KEEP, GL20.GL_KEEP, GL20.GL_KEEP)
+        gl.glDepthFunc(GL20.GL_ALWAYS)
+        cone.render(world, GL20.GL_TRIANGLES)
+        gl.glDepthFunc(GL20.GL_LEQUAL)
+        gl.glDepthMask(true)
+        gl.glDisable(GL20.GL_STENCIL_TEST)
     }
 
     private fun refreshChunks(fcx: Int, fcy: Int) {
@@ -182,6 +250,7 @@ class SurfaceRenderer3D(seed: Long, private val published: Published) : Disposab
             if (knownSpoil.containsKey(key) && sameSpoil(knownSpoil[key], overlay.spoil)) continue
             knownSpoil[key] = overlay.spoil
             local.setSpoil(cx, cy, overlay.spoil)
+            entranceDirty = true
         }
         val now = System.nanoTime()
         for (cy in fcy - RING..fcy + RING) for (cx in fcx - RING..fcx + RING) {
@@ -189,8 +258,9 @@ class SurfaceRenderer3D(seed: Long, private val published: Published) : Disposab
             val key = cx + cy * CHUNKS
             val slot = slots.getOrPut(key) { Slot() }
             val rocks = rocksFor(slot, cx, cy)
+            val grassRocks = grassRocksFor(slot, cx, cy, rocks)
             val old = slot.spoils
-            var changed = slot.requested == 0L || old == null || rocks !== slot.rockList
+            var changed = slot.requested == 0L || old == null || rocks !== slot.rockList || grassRocks !== slot.grassRockList
             val spoils = spoilScratch
             for (dy in -1..1) for (dx in -1..1) {
                 val nx = cx + dx
@@ -203,7 +273,8 @@ class SurfaceRenderer3D(seed: Long, private val published: Published) : Disposab
                 val copy = spoils.copyOf()
                 slot.spoils = copy
                 slot.rockList = rocks
-                slot.requested = cache.request(cx, cy, copy[4], rocks, copy)
+                slot.grassRockList = grassRocks
+                slot.requested = cache.request(cx, cy, copy[4], rocks, copy, grassRocks)
                 slot.requestedAt = now
             }
         }
@@ -245,6 +316,45 @@ class SurfaceRenderer3D(seed: Long, private val published: Published) : Disposab
         return result
     }
 
+    /**
+     * The rocks grass in chunk (cx, cy) must avoid: [own] (the chunk's combined list) plus the
+     * neighbours' published rocks and the placed objects whose footprint, widened by
+     * [GrassField.ROCK_CLEARANCE], reaches into the chunk. Cached in [slot] by the identity of its
+     * sources, and kept as the same list when the content is unchanged, so no needless rebuild.
+     */
+    private fun grassRocksFor(slot: Slot, cx: Int, cy: Int, own: List<Blob>): List<Blob> {
+        val sources = grassScratch
+        java.util.Arrays.fill(sources, null)
+        for (dy in -1..1) for (dx in -1..1) {
+            val nx = cx + dx
+            val ny = cy + dy
+            if ((dx == 0 && dy == 0) || nx < 0 || ny < 0 || nx >= CHUNKS || ny >= CHUNKS) continue
+            sources[(dx + 1) + (dy + 1) * 3] = published.rocks[nx + ny * CHUNKS]
+        }
+        sources[4] = own
+        sources[9] = published.placed
+        val cached = slot.grassRocks
+        val old = slot.grassSources
+        if (cached != null && old != null) {
+            var same = true
+            for (i in sources.indices) if (old[i] !== sources[i]) same = false
+            if (same) return cached
+        }
+        slot.grassSources = sources.copyOf()
+        val pad = GrassField.ROCK_CLEARANCE
+        val x0 = cx * CHUNK_MM - pad
+        val y0 = cy * CHUNK_MM - pad
+        val x1 = (cx + 1) * CHUNK_MM + pad
+        val y1 = (cy + 1) * CHUNK_MM + pad
+        fun reaches(b: Blob) = b.cx + b.reach >= x0 && b.cx - b.reach <= x1 && b.cy + b.reach >= y0 && b.cy - b.reach <= y1
+        val out = ArrayList<Blob>(own)
+        for (i in 0 until 9) if (i != 4) sources[i]?.forEach { if (reaches(it)) out += it }
+        for (b in published.placed) if (b !in own && reaches(b)) out += b
+        val result = if (cached != null && cached == out) cached else if (out.size == own.size) own else out
+        slot.grassRocks = result
+        return result
+    }
+
     private fun uploadFinished() {
         for (r in cache.poll(UPLOADS_PER_FRAME)) {
             val slot = slots[r.cx + r.cy * CHUNKS] ?: continue
@@ -275,6 +385,8 @@ class SurfaceRenderer3D(seed: Long, private val published: Published) : Disposab
             s.rocks?.dispose()
         }
         foodMesh?.dispose()
+        entranceCone?.dispose()
+        entranceLid?.dispose()
         ants.dispose()
         grass.dispose()
         world.dispose()

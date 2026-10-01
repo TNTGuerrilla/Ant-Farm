@@ -11,13 +11,14 @@ class ChunkResult(val cx: Int, val cy: Int, val ground: MeshData, val rocks: Mes
 
 /**
  * Builds chunks on one background thread. The render thread requests a chunk with immutable
- * published data (its spoil array, its neighbours' spoil arrays and its rock list) and polls
+ * published data (its spoil array, its neighbours' spoil arrays, its rock list and the rocks
+ * reaching in from its neighbours) and polls
  * finished results to upload. Requests are applied in order, so a chunk's spoil mirror is current
  * before it is rebuilt; a result is tagged with its request's version, and the renderer keeps only
  * the newest per chunk.
  */
 class ChunkCache(seed: Long) {
-    private class Job(val cx: Int, val cy: Int, val spoil: FloatArray?, val neighbours: Array<FloatArray?>?, val rocks: List<Blob>, val version: Long)
+    private class Job(val cx: Int, val cy: Int, val spoil: FloatArray?, val neighbours: Array<FloatArray?>?, val rocks: List<Blob>, val grassRocks: List<Blob>, val version: Long)
 
     private val mesher = ChunkMesher(seed)
     private val grass = GrassField(seed)
@@ -34,12 +35,13 @@ class ChunkCache(seed: Long) {
      * Queues chunk (cx, cy) for building with its published spoil (immutable, may be null) and
      * rocks. [neighbours], if given, holds the spoil of the 3 by 3 block around the chunk at index
      * (dx + 1) + (dy + 1) * 3 (the centre entry is ignored in favour of [spoil]); the edge vertices
-     * read it, so seams under spoil stay watertight. A null entry means no spoil there. Returns the
-     * request's version.
+     * read it, so seams under spoil stay watertight. A null entry means no spoil there. [grassRocks]
+     * are the rocks grass must stay out of: the chunk's own plus any neighbour's that reach into it
+     * (by default just [rocks]). Returns the request's version.
      */
-    fun request(cx: Int, cy: Int, spoil: FloatArray?, rocks: List<Blob>, neighbours: Array<FloatArray?>? = null): Long {
+    fun request(cx: Int, cy: Int, spoil: FloatArray?, rocks: List<Blob>, neighbours: Array<FloatArray?>? = null, grassRocks: List<Blob> = rocks): Long {
         val v = versions.incrementAndGet()
-        jobs.addLast(Job(cx, cy, spoil, neighbours, rocks, v))
+        jobs.addLast(Job(cx, cy, spoil, neighbours, rocks, grassRocks, v))
         return v
     }
 
@@ -70,7 +72,7 @@ class ChunkCache(seed: Long) {
                     }
                 }
                 mesher.setSpoil(job.cx, job.cy, job.spoil)
-                results += ChunkResult(job.cx, job.cy, mesher.ground(job.cx, job.cy), mesher.rocks(job.rocks), grass.tufts(job.cx, job.cy, mesher), job.version)
+                results += ChunkResult(job.cx, job.cy, mesher.ground(job.cx, job.cy), mesher.rocks(job.rocks), grass.tufts(job.cx, job.cy, mesher, job.grassRocks), job.version)
             }
         } catch (e: InterruptedException) {
             // closing

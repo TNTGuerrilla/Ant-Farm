@@ -43,6 +43,7 @@ internal fun gdxConfig() = AndroidApplicationConfiguration().apply {
     useAccelerometer = false
     useCompass = false
     useGL30 = true
+    stencil = 8 // the 3D view draws the nest entrance's dip through the stencil buffer
 }
 
 internal fun describe(event: KeyEvent): String {

@@ -4,12 +4,12 @@ import kotlin.math.sqrt
 
 /**
  * The sky through one simulated day: night, dawn, midday, golden afternoon and dusk keyframes,
- * blended linearly and wrapping at midnight. A day is [DAY_SECONDS] of simulation time (the
- * design's 10 real minutes per day at 1x); the run starts at [START], mid-morning. Night keeps a
+ * blended linearly and wrapping at midnight. A day is [DAY_SECONDS] of simulation time (60 real
+ * minutes per day at 1x, the owner's choice in M1b-2c); the run starts at [START], mid-morning. Night keeps a
  * dim blue moonlight and a raised blue ambient so the scene stays readable.
  */
 object DayCycle {
-    const val DAY_SECONDS = 600f
+    const val DAY_SECONDS = 3600f
     const val START = 0.38f
 
     private class Key(

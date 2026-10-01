@@ -23,9 +23,10 @@ object AntMesh {
     const val PART_PREY = 9
     val TRIPOD_A = intArrayOf(0, 4, 2)
 
-    private const val BODY_R = 70f / 255f
-    private const val BODY_G = 40f / 255f
-    private const val BODY_B = 26f / 255f
+    // A near-black brown (owner's choice in M1b-2c, darker than the spec's 70/40/26).
+    private const val BODY_R = 34f / 255f
+    private const val BODY_G = 22f / 255f
+    private const val BODY_B = 16f / 255f
     private const val LIMB = 0.6f
     private val MANDIBLE_TIP = floatArrayOf(2.75f, 0f, 0.75f)
 

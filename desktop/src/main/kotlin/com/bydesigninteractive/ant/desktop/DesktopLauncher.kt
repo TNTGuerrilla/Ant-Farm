@@ -14,6 +14,8 @@ fun main(args: Array<String>) {
         setTitle("Ant Farm")
         setOpenGLEmulation(Lwjgl3ApplicationConfiguration.GLEmulation.GL30, 3, 3)
         setWindowedMode(1600, 900)
+        // 8 stencil bits: the 3D view draws the nest entrance's dip through the stencil buffer.
+        setBackBufferConfig(8, 8, 8, 8, 16, 8, 0)
         useVsync(true)
         setForegroundFPS(0)
     }
