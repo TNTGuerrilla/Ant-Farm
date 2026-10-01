@@ -23,6 +23,8 @@ class AntPose {
     var nx = 0f
     var ny = 0f
     var nz = 1f
+    var crop = 0f
+    var carry = CARRY_NONE
 }
 
 /**
@@ -57,6 +59,8 @@ class AntStates {
         var space = ByteArray(0)
         var role = ByteArray(0)
         var state = ByteArray(0)
+        var crop = FloatArray(0)
+        var carry = ByteArray(0)
         var f = FloatArray(0) // 11 floats per ant: speed, heading, x, y, z, fx, fy, fz, nx, ny, nz
 
         fun ensure(n: Int) {
@@ -66,6 +70,8 @@ class AntStates {
             space = space.copyOf(c)
             role = role.copyOf(c)
             state = state.copyOf(c)
+            crop = crop.copyOf(c)
+            carry = carry.copyOf(c)
             f = f.copyOf(c * STRIDE)
         }
     }
@@ -82,6 +88,8 @@ class AntStates {
             cur.space[i] = s.space[i]
             cur.role[i] = s.role[i]
             cur.state[i] = s.state[i]
+            cur.crop[i] = s.crop[i]
+            cur.carry[i] = s.carry[i]
             val o = i * STRIDE
             val f = cur.f
             f[o] = s.speed[i]
@@ -120,8 +128,10 @@ class AntStates {
         out.role = Role.entries[cur.role[i].toInt()]
         out.state = AntState.entries[cur.state[i].toInt()]
         out.speed = c[o]
+        out.carry = cur.carry[i].toInt()
         val blend = i < prevCount && prev.id[i] == cur.id[i] && prev.space[i] == cur.space[i]
         if (!blend) {
+            out.crop = cur.crop[i]
             out.heading = c[o + 1]
             out.x = c[o + 2]
             out.y = c[o + 3]
@@ -135,6 +145,7 @@ class AntStates {
             return
         }
         val p = prev.f
+        out.crop = lerp(prev.crop[i], cur.crop[i], alpha)
         out.heading = p[o + 1] + angleDiff(c[o + 1], p[o + 1]) * alpha
         out.x = lerp(p[o + 2], c[o + 2], alpha)
         out.y = lerp(p[o + 3], c[o + 3], alpha)

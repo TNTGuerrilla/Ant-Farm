@@ -101,6 +101,8 @@ class Published(world: World) {
         val cells = CHUNK_MM / 10
         for (cy in fcy - RING..fcy + RING) for (cx in fcx - RING..fcx + RING) {
             if (cx < 0 || cy < 0 || cx >= CHUNKS || cy >= CHUNKS) continue
+            // Generation is a pure function of the seed and the foods, and onGenerated publishes into rocks, so this changes no simulation result.
+            w.surface.sdf.ownBlobs(cx, cy)
             val trail = FloatArray(cells * cells)
             val hasTrail = w.surface.trail.projectMax(cx * CHUNK_MM.toFloat(), cy * CHUNK_MM.toFloat(), cells, trail)
             val spoil = w.surface.spoil.chunk(cx, cy)?.copyOf()

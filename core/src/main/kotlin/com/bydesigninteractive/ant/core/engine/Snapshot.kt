@@ -4,6 +4,11 @@ import com.bydesigninteractive.ant.sim.World
 import com.bydesigninteractive.ant.sim.ant.Space
 import com.bydesigninteractive.ant.sim.world.FoodKind
 
+/** What an ant visibly carries in its mandibles. */
+const val CARRY_NONE = 0
+const val CARRY_PELLET = 1
+const val CARRY_PREY = 2
+
 /** Food as the renderers need it; immutable. */
 data class FoodView(
     val x: Float,
@@ -42,6 +47,8 @@ class Snapshot {
     var nx = FloatArray(0)
     var ny = FloatArray(0)
     var nz = FloatArray(0)
+    var crop = FloatArray(0)
+    var carry = ByteArray(0)
     var foods: List<FoodView> = emptyList()
     var airCells = 0
     var airMinX = 0
@@ -67,6 +74,8 @@ class Snapshot {
         nx = nx.copyOf(c)
         ny = ny.copyOf(c)
         nz = nz.copyOf(c)
+        crop = crop.copyOf(c)
+        carry = carry.copyOf(c)
     }
 
     /** Copies the world's ants and nest outline. Simulation thread only. */
@@ -94,6 +103,13 @@ class Snapshot {
             nx[i] = a.nx
             ny[i] = a.ny
             nz[i] = a.nz
+            val prey = a.lastFoodKind == FoodKind.PREY && a.crop > 0f
+            carry[i] = when {
+                a.carriesPellet -> CARRY_PELLET.toByte()
+                prey -> CARRY_PREY.toByte()
+                else -> CARRY_NONE.toByte()
+            }
+            crop[i] = if (prey || a.desiredCrop <= 0f) 0f else (a.crop / a.desiredCrop).coerceIn(0f, 1f)
         }
         foods = foodViews
         val g = w.nest

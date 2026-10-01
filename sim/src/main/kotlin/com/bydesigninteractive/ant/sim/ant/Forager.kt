@@ -204,6 +204,7 @@ internal object Forager {
         val food = a.food
         if (food != null) {
             a.crop = food.quality
+            a.lastFoodKind = food.kind
             w.feedEvents += FeedEvent(w.tick, food.id)
             if (food.loads != Int.MAX_VALUE) {
                 food.loads--

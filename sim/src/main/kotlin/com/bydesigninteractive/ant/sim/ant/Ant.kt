@@ -1,5 +1,6 @@
 package com.bydesigninteractive.ant.sim.ant
 
+import com.bydesigninteractive.ant.sim.world.FoodKind
 import com.bydesigninteractive.ant.sim.world.FoodSource
 
 enum class Role { FORAGER, DIGGER }
@@ -57,4 +58,7 @@ class Ant(val id: Int, val role: Role, val desiredCrop: Float, val laysTrail: Bo
     var digX = 0
     var digY = 0
     var food: FoodSource? = null
+
+    /** The kind of the last food this ant fed at; written for the renderer, never read by the simulation. */
+    var lastFoodKind: FoodKind? = null
 }
