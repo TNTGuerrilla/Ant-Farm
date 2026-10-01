@@ -126,8 +126,8 @@ internal object SurfaceWalk {
 
     /** Samples [field] ahead-left and ahead-right on the surface into senseL and senseR (section 4). */
     fun sense(w: World, a: Ant, field: Field3) {
-        a.senseL = sample(w, a, field, w.params.senseAngle)
-        a.senseR = sample(w, a, field, -w.params.senseAngle)
+        a.senseL = sample(w, a, field, w.senseCos[0], w.senseSin[0])
+        a.senseR = sample(w, a, field, w.senseCos[1], w.senseSin[1])
     }
 
     /** Turns toward the stronger side in proportion to (L - R) / (L + R) (section 4). */
@@ -143,9 +143,7 @@ internal object SurfaceWalk {
     /** How much of the forward vector is horizontal, 0 (straight up or down) to 1. */
     fun horizontalForward(a: Ant): Float = sqrt(a.fx * a.fx + a.fy * a.fy)
 
-    private fun sample(w: World, a: Ant, field: Field3, angle: Float): Float {
-        val c = cos(angle)
-        val s = sin(angle)
+    private fun sample(w: World, a: Ant, field: Field3, c: Float, s: Float): Float {
         val cx = a.ny * a.fz - a.nz * a.fy
         val cy = a.nz * a.fx - a.nx * a.fz
         val cz = a.nx * a.fy - a.ny * a.fx

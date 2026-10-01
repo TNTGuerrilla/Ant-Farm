@@ -34,8 +34,9 @@ class Field3(
     }
 
     private val blocks = LongObjectMap<Block>()
-    private var cacheKey = Long.MIN_VALUE
-    private var cacheBlock: Block? = null
+    private val cacheKeys = LongArray(CACHE) { Long.MIN_VALUE }
+    private val cacheBlocks = arrayOfNulls<Block>(CACHE)
+    private var cacheNext = 0
 
     /** Ticks stepped so far. */
     var now = 0L
@@ -54,15 +55,18 @@ class Field3(
         val fx = u - ix
         val fy = v - iy
         val fz = w - iz
+        val gx = 1f - fx
+        val gy = 1f - fy
+        val gz = 1f - fz
         var sum = 0f
-        for (c in 0 until 8) {
-            val dx = c and 1
-            val dy = (c shr 1) and 1
-            val dz = (c shr 2) and 1
-            val weight = (if (dx == 0) 1f - fx else fx) * (if (dy == 0) 1f - fy else fy) * (if (dz == 0) 1f - fz else fz)
-            if (weight == 0f) continue
-            sum += weight * voxel(ix + dx, iy + dy, iz + dz)
-        }
+        sum = acc(sum, gx * gy * gz, ix, iy, iz)
+        sum = acc(sum, fx * gy * gz, ix + 1, iy, iz)
+        sum = acc(sum, gx * fy * gz, ix, iy + 1, iz)
+        sum = acc(sum, fx * fy * gz, ix + 1, iy + 1, iz)
+        sum = acc(sum, gx * gy * fz, ix, iy, iz + 1)
+        sum = acc(sum, fx * gy * fz, ix + 1, iy, iz + 1)
+        sum = acc(sum, gx * fy * fz, ix, iy + 1, iz + 1)
+        sum = acc(sum, fx * fy * fz, ix + 1, iy + 1, iz + 1)
         return sum
     }
 
@@ -103,19 +107,27 @@ class Field3(
         val fx = u - ix
         val fy = v - iy
         val fz = w - iz
-        for (c in 0 until 8) {
-            val dx = c and 1
-            val dy = (c shr 1) and 1
-            val dz = (c shr 2) and 1
-            val weight = (if (dx == 0) 1f - fx else fx) * (if (dy == 0) 1f - fy else fy) * (if (dz == 0) 1f - fz else fz)
-            if (weight == 0f) continue
-            val gx = ix + dx
-            val gy = iy + dy
-            val gz = iz + dz
-            val b = blockFor(gx, gy, gz, create = true)!!
-            catchUp(b)
-            b.v[index(gx, gy, gz)] += amount * weight
-        }
+        val gx = 1f - fx
+        val gy = 1f - fy
+        val gz = 1f - fz
+        deposit(gx * gy * gz, ix, iy, iz, amount)
+        deposit(fx * gy * gz, ix + 1, iy, iz, amount)
+        deposit(gx * fy * gz, ix, iy + 1, iz, amount)
+        deposit(fx * fy * gz, ix + 1, iy + 1, iz, amount)
+        deposit(gx * gy * fz, ix, iy, iz + 1, amount)
+        deposit(fx * gy * fz, ix + 1, iy, iz + 1, amount)
+        deposit(gx * fy * fz, ix, iy + 1, iz + 1, amount)
+        deposit(fx * fy * fz, ix + 1, iy + 1, iz + 1, amount)
+    }
+
+    private fun acc(sum: Float, weight: Float, gx: Int, gy: Int, gz: Int): Float =
+        if (weight == 0f) sum else sum + weight * voxel(gx, gy, gz)
+
+    private fun deposit(weight: Float, gx: Int, gy: Int, gz: Int, amount: Float) {
+        if (weight == 0f) return
+        val b = blockFor(gx, gy, gz, create = true)!!
+        catchUp(b)
+        b.v[index(gx, gy, gz)] += amount * weight
     }
 
     /** Advances one tick: diffuses, or sweeps faded blocks every [SWEEP_TICKS] ticks. Mutates. */
@@ -189,15 +201,16 @@ class Field3(
         val by = Math.floorDiv(gy, B)
         val bz = Math.floorDiv(gz, B)
         val key = key(bx, by, bz)
-        if (key == cacheKey) return cacheBlock
+        for (i in 0 until CACHE) if (cacheKeys[i] == key) return cacheBlocks[i]
         var b = blocks.get(key)
         if (b == null) {
             if (!create) return null
             b = Block(bx, by, bz, now)
             blocks.put(key, b)
         }
-        cacheKey = key
-        cacheBlock = b
+        cacheKeys[cacheNext] = key
+        cacheBlocks[cacheNext] = b
+        cacheNext = (cacheNext + 1) % CACHE
         return b
     }
 
@@ -256,8 +269,8 @@ class Field3(
             if (m < releaseBelow) dead += key
         }
         for (key in dead) blocks.remove(key)
-        cacheKey = Long.MIN_VALUE
-        cacheBlock = null
+        cacheKeys.fill(Long.MIN_VALUE)
+        cacheBlocks.fill(null)
     }
 
     private fun sweep() {
@@ -271,8 +284,8 @@ class Field3(
             if (m < releaseBelow) dead += key
         }
         for (key in dead) blocks.remove(key)
-        cacheKey = Long.MIN_VALUE
-        cacheBlock = null
+        cacheKeys.fill(Long.MIN_VALUE)
+        cacheBlocks.fill(null)
     }
 
     private fun index(gx: Int, gy: Int, gz: Int): Int =
@@ -285,6 +298,7 @@ class Field3(
     private companion object {
         const val B = 10
         const val B3 = B * B * B
+        const val CACHE = 4
         const val SWEEP_TICKS = 200L
         const val OFFSET = 1 shl 20
     }

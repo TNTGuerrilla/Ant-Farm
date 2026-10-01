@@ -5,18 +5,24 @@ import com.bydesigninteractive.ant.sim.world.SURFACE_MM
 /** Buckets surface ants on a coarse grid so counting neighbors is cheap. */
 class SpatialIndex(private val bucketMm: Float = 20f) {
     private val size = (SURFACE_MM / bucketMm).toInt() + 1
-    private val head = IntArray(size * size)
+    private val head = IntArray(size * size).also { it.fill(-1) }
+    private var used = IntArray(64)
+    private var usedCount = 0
     private var next = IntArray(64)
     private var members: List<Ant> = emptyList()
 
+    /** Rebuckets the surface ants, resetting only the buckets the last rebuild filled. */
     fun rebuild(ants: List<Ant>) {
-        head.fill(-1)
+        for (i in 0 until usedCount) head[used[i]] = -1
+        usedCount = 0
         if (next.size < ants.size) next = IntArray(ants.size * 2)
+        if (used.size < ants.size) used = IntArray(ants.size * 2)
         members = ants
         for (i in ants.indices) {
             val a = ants[i]
             if (a.space != Space.SURFACE) continue
             val b = bucket(a.x) + bucket(a.y) * size
+            if (head[b] < 0) used[usedCount++] = b
             next[i] = head[b]
             head[b] = i
         }

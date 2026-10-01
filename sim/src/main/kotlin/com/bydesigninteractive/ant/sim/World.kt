@@ -61,6 +61,10 @@ class World(
     internal val pos = FloatArray(3)
     internal val norm = FloatArray(3)
 
+    // cos and sin of the antenna angles, left (+senseAngle) then right (-senseAngle), computed once.
+    internal val senseCos = floatArrayOf(cos(params.senseAngle), cos(-params.senseAngle))
+    internal val senseSin = floatArrayOf(sin(params.senseAngle), sin(-params.senseAngle))
+
     /** Foragers that have brought food home and unloaded it. */
     var unloads = 0
 
