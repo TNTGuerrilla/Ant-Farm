@@ -262,13 +262,21 @@ class AntBatch(capacity: Int = 2048) {
  *
  * GL state on return: blending and face culling off, depth writes on, depth test unchanged.
  */
-class AntRenderer : Disposable {
+class AntRenderer(private val drawAnts: Boolean = true, private val drawShadows: Boolean = true) : Disposable {
     private val shader: ShaderProgram
     private val shadowShader: ShaderProgram
     private var capacity = 2048
 
     /** The last frame's records and counts (the counts are logged). */
     val batch = AntBatch(capacity)
+
+    /** Vertices submitted by the last [draw]: detailed ants, simple ants and shadow discs (instances times mesh vertices). */
+    var vertsDetailed = 0
+        private set
+    var vertsSimple = 0
+        private set
+    var vertsShadows = 0
+        private set
     private val detailed: Mesh
     private val simple: Mesh
     private val disc: Mesh
@@ -288,6 +296,10 @@ class AntRenderer : Disposable {
     }
 
     fun draw(poses: List<AntPose>, animator: AntAnimator, turns: TurnSmoother, sky: SkyState, camera: Camera) {
+        vertsDetailed = 0
+        vertsSimple = 0
+        vertsShadows = 0
+        if (!drawAnts) return
         AntInstances.fill(poses, animator, turns, camera, batch)
         if (batch.capacity > capacity) grow(batch.capacity)
         val records = batch.records
@@ -298,11 +310,14 @@ class AntRenderer : Disposable {
         gl.glEnable(GL20.GL_BLEND)
         gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
         gl.glDepthMask(false)
-        shadowShader.bind()
-        shadowShader.setUniformMatrix("u_projView", camera.combined)
-        shadowShader.setUniformf("u_sunDir", sky.sunDir[0], sky.sunDir[1], sky.sunDir[2])
-        shadowShader.setUniformf("u_strength", strength)
-        drawInstances(disc, records, 0, batch.shadowed, shadowShader)
+        if (drawShadows) {
+            shadowShader.bind()
+            shadowShader.setUniformMatrix("u_projView", camera.combined)
+            shadowShader.setUniformf("u_sunDir", sky.sunDir[0], sky.sunDir[1], sky.sunDir[2])
+            shadowShader.setUniformf("u_strength", strength)
+            drawInstances(disc, records, 0, batch.shadowed, shadowShader)
+            vertsShadows = batch.shadowed * disc.numVertices
+        }
         gl.glDepthMask(true)
         gl.glDisable(GL20.GL_BLEND)
         // The model is closed and wound counter-clockwise from outside, and (forward, left, up) is right-handed.
@@ -312,6 +327,8 @@ class AntRenderer : Disposable {
         Shaders.applySky(shader, sky, camera)
         drawInstances(detailed, records, 0, batch.detailed, shader)
         drawInstances(simple, records, batch.detailed, batch.simple, shader)
+        vertsDetailed = batch.detailed * detailed.numVertices
+        vertsSimple = batch.simple * simple.numVertices
         gl.glDisable(GL20.GL_CULL_FACE)
     }
 

@@ -9,7 +9,8 @@ import com.bydesigninteractive.ant.sim.scenario.Scenarios
 
 /**
  * Runs the M1 app; `--stub` runs the M0 stub instead, `--seed=N` picks the world seed, and
- * `--scenario=colony1000` runs the 1,000-ant benchmark colony instead of the starter.
+ * `--scenario=colony1000` runs the 1,000-ant benchmark colony instead of the starter. `--skip=ants,rocks` skips those 3D layers
+ * (ants, shadows, rocks, ground, grass, food, sky) for profiling.
  */
 fun main(args: Array<String>) {
     useLegacyShadersOnCoreProfile()
@@ -32,7 +33,8 @@ fun main(args: Array<String>) {
             "starter" -> Scenarios.starter(seed)
             else -> error("unknown scenario $scenario")
         }
-        AntApp("desktop", world, tv = false)
+        val skip = args.firstOrNull { it.startsWith("--skip=") }?.substringAfter('=')?.split(',')?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
+        AntApp("desktop", world, tv = false, skipLayers = skip)
     }
     Lwjgl3Application(app, config)
 }

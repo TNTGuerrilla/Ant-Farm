@@ -10,7 +10,8 @@ import com.bydesigninteractive.ant.sim.scenario.Scenarios
 
 /**
  * The launcher entry: the same app as the dream, as a normal foreground activity. Started over adb
- * with `--es scenario colony1000` it runs the 1,000-ant benchmark colony instead of the starter.
+ * with `--es scenario colony1000` it runs the 1,000-ant benchmark colony instead of the starter, and `--es layers ants,rocks` skips those 3D layers (ants, shadows, rocks,
+ * ground, grass, food, sky) for profiling.
  */
 class PreviewActivity : AndroidApplication() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -19,7 +20,8 @@ class PreviewActivity : AndroidApplication() {
             "colony1000" -> Scenarios.colony1000(WORLD_SEED)
             else -> Scenarios.starter(WORLD_SEED)
         }
-        initialize(AntApp("activity", world, tv = true), gdxConfig())
+        val skip = intent.getStringExtra("layers")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
+        initialize(AntApp("activity", world, tv = true, skipLayers = skip), gdxConfig())
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

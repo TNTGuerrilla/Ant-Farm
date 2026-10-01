@@ -45,20 +45,21 @@ class GrassRenderer(seed: Long) : Disposable {
         }
     }
 
-    /** Draws the tufts of [chunks] (instance arrays from [GrassField.tufts]); [time] drives the sway, in seconds. */
-    fun draw(chunks: Collection<FloatArray>, sky: SkyState, camera: Camera, time: Float) {
+    /** Draws the tufts of [chunks] (instance arrays from [GrassField.tufts]); [time] drives the sway, in seconds. Returns the vertices submitted (instances times tuft vertices). */
+    fun draw(chunks: Collection<FloatArray>, sky: SkyState, camera: Camera, time: Float): Int {
         var n = 0
         for (c in chunks) {
             if (n + c.size > data.size) break
             c.copyInto(data, n)
             n += c.size
         }
-        if (n == 0) return
+        if (n == 0) return 0
         shader.bind()
         Shaders.applySky(shader, sky, camera)
         shader.setUniformf("u_time", time)
         tuft.setInstanceData(data, 0, n)
         tuft.render(shader, GL20.GL_TRIANGLES)
+        return n / GrassField.INSTANCE_FLOATS * tuft.numVertices
     }
 
     override fun dispose() {

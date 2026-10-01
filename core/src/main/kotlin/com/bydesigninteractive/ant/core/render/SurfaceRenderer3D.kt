@@ -48,7 +48,26 @@ class SurfaceRenderer3D(
     private val published: Published,
     private val entranceX: Float,
     private val entranceY: Float,
+    skipLayers: Set<String> = emptySet(),
 ) : Disposable {
+    private val drawAnts = "ants" !in skipLayers
+    private val drawShadows = "shadows" !in skipLayers
+    private val drawRocks = "rocks" !in skipLayers
+    private val drawGround = "ground" !in skipLayers
+    private val drawGrass = "grass" !in skipLayers
+    private val drawFood = "food" !in skipLayers
+    private val drawSky = "sky" !in skipLayers
+
+    /** Running vertex totals per layer since the last [vertexSummary], and the frames they cover. */
+    private var vGround = 0L
+    private var vRocks = 0L
+    private var vFood = 0L
+    private var vGrass = 0L
+    private var vAntsDetailed = 0L
+    private var vAntsSimple = 0L
+    private var vShadows = 0L
+    private var vFrames = 0
+
     val camera = PerspectiveCamera(FOV, 1f, 1f).apply {
         near = 2f
         far = 3000f
@@ -78,7 +97,7 @@ class SurfaceRenderer3D(
             skyQuad = Mesh(true, 4, 6, VertexAttribute(VertexAttributes.Usage.Position, 2, "a_position")).also { made += it }
             skyQuad.setVertices(floatArrayOf(-1f, -1f, 1f, -1f, 1f, 1f, -1f, 1f))
             skyQuad.setIndices(shortArrayOf(0, 1, 2, 0, 2, 3))
-            ants = AntRenderer().also { made += it }
+            ants = AntRenderer(drawAnts, drawShadows).also { made += it }
             grass = GrassRenderer(seed).also { made += it }
             cache = ChunkCache(seed)
         } catch (e: Exception) {
@@ -144,6 +163,21 @@ class SurfaceRenderer3D(
         camera.viewportHeight = h.toFloat()
     }
 
+    /**
+     * The per-frame average vertices submitted per layer since the last call, for the log (for example
+     * ` verts ground 345k rocks 142k ...`), then resets the totals. Empty when no frame was drawn.
+     */
+    fun vertexSummary(): String {
+        val n = vFrames
+        if (n == 0) return ""
+        val s = " verts ground ${k(vGround / n)} rocks ${k(vRocks / n)} food ${k(vFood / n)} grass ${k(vGrass / n)} " +
+            "ants detailed ${k(vAntsDetailed / n)} simple ${k(vAntsSimple / n)} shadows ${k(vShadows / n)}"
+        vGround = 0; vRocks = 0; vFood = 0; vGrass = 0; vAntsDetailed = 0; vAntsSimple = 0; vShadows = 0; vFrames = 0
+        return s
+    }
+
+    private fun k(v: Long): String = if (v < 1000) "$v" else "${v / 1000}k"
+
     /** The ground height at (x, y) as drawn: base relief plus the spoil mirrored so far. */
     fun groundHeight(x: Float, y: Float): Float = local.heights.height(x, y)
 
@@ -178,10 +212,12 @@ class SurfaceRenderer3D(
         gl.glDisable(GL20.GL_BLEND)
         gl.glDisable(GL20.GL_DEPTH_TEST)
         gl.glDisable(GL20.GL_CULL_FACE)
-        skyShader.bind()
-        skyShader.setUniformf("u_top", sky.skyTop[0], sky.skyTop[1], sky.skyTop[2])
-        skyShader.setUniformf("u_horizon", sky.skyHorizon[0], sky.skyHorizon[1], sky.skyHorizon[2])
-        skyQuad.render(skyShader, GL20.GL_TRIANGLES)
+        if (drawSky) {
+            skyShader.bind()
+            skyShader.setUniformf("u_top", sky.skyTop[0], sky.skyTop[1], sky.skyTop[2])
+            skyShader.setUniformf("u_horizon", sky.skyHorizon[0], sky.skyHorizon[1], sky.skyHorizon[2])
+            skyQuad.render(skyShader, GL20.GL_TRIANGLES)
+        }
         gl.glEnable(GL20.GL_DEPTH_TEST)
         gl.glDepthFunc(GL20.GL_LEQUAL)
         gl.glDepthMask(true)
@@ -192,17 +228,25 @@ class SurfaceRenderer3D(
         Shaders.applySky(world, sky, camera)
         for ((key, slot) in slots) {
             if (abs(key % CHUNKS - fcx) > RING || abs(key / CHUNKS - fcy) > RING) continue // kept only for hysteresis
-            slot.ground?.render(world, GL20.GL_TRIANGLES)
-            slot.rocks?.render(world, GL20.GL_TRIANGLES)
+            if (drawGround) slot.ground?.let { it.render(world, GL20.GL_TRIANGLES); vGround += it.numVertices }
+            if (drawRocks) slot.rocks?.let { it.render(world, GL20.GL_TRIANGLES); vRocks += it.numVertices }
         }
         // Beyond the ring there is no ground drawn (or spoil mirrored) to set it in.
-        if (abs(floor(entranceX / CHUNK_MM).toInt() - fcx) <= RING && abs(floor(entranceY / CHUNK_MM).toInt() - fcy) <= RING) drawEntrance()
+        if (drawGround && abs(floor(entranceX / CHUNK_MM).toInt() - fcx) <= RING && abs(floor(entranceY / CHUNK_MM).toInt() - fcy) <= RING) drawEntrance()
         gl.glDisable(GL20.GL_CULL_FACE) // stems and food lumps are thin; draw both sides
-        foodMesh?.render(world, GL20.GL_TRIANGLES)
-        grassChunks.clear()
-        for (slot in slots.values) if (slot.grass.isNotEmpty()) grassChunks += slot.grass
-        grass.draw(grassChunks, sky, camera, seconds) // blades are single triangles; culling is still off
-        ants.draw(poses, animator, turns, sky, camera)
+        if (drawFood) foodMesh?.let { it.render(world, GL20.GL_TRIANGLES); vFood += it.numVertices }
+        if (drawGrass) {
+            grassChunks.clear()
+            for (slot in slots.values) if (slot.grass.isNotEmpty()) grassChunks += slot.grass
+            vGrass += grass.draw(grassChunks, sky, camera, seconds) // blades are single triangles; culling is still off
+        }
+        if (drawAnts) {
+            ants.draw(poses, animator, turns, sky, camera)
+            vAntsDetailed += ants.vertsDetailed
+            vAntsSimple += ants.vertsSimple
+            vShadows += ants.vertsShadows
+        }
+        vFrames++
         gl.glDisable(GL20.GL_DEPTH_TEST)
         gl.glDisable(GL20.GL_CULL_FACE)
         gl.glDisable(GL20.GL_BLEND)
@@ -218,6 +262,7 @@ class SurfaceRenderer3D(
      */
     private fun drawEntrance() {
         val cone = entranceCone ?: return
+        vGround += cone.numVertices
         val lid = entranceLid
         val gl = Gdx.gl
         if (!stencil || lid == null) {

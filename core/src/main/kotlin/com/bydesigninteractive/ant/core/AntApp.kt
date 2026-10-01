@@ -52,7 +52,7 @@ const val APP_LOG_TAG = "AntFarm"
  * [world] is read only in [create], for immutable values, before the runner starts. After that
  * only the simulation thread touches it, and this class reads [Published] state.
  */
-class AntApp(private val label: String, private val world: World, private val tv: Boolean) : ApplicationAdapter() {
+class AntApp(private val label: String, private val world: World, private val tv: Boolean, private val skipLayers: Set<String> = emptySet()) : ApplicationAdapter() {
     private enum class View(val title: String) { NEST("nest"), SURFACE_TOP("surface, top"), SURFACE_3D("surface, 3D debug") }
 
     private val frames = FrameStats(600)
@@ -133,10 +133,11 @@ class AntApp(private val label: String, private val world: World, private val tv
         Gdx.app.log(APP_LOG_TAG, "start $label ${Gdx.graphics.width}x${Gdx.graphics.height} seed $seed")
         instanced = InstancingCheck.run()
         Gdx.app.log(APP_LOG_TAG, "gl ${Gdx.graphics.glVersion.majorVersion}.${Gdx.graphics.glVersion.minorVersion} instancing $instanced")
+        Gdx.app.log(APP_LOG_TAG, "skip layers ${if (skipLayers.isEmpty()) "none" else skipLayers.joinToString(",")}")
         checkShaders()
         if (instanced) {
             look = try {
-                SurfaceRenderer3D(seed, published, entranceX, entranceY)
+                SurfaceRenderer3D(seed, published, entranceX, entranceY, skipLayers)
             } catch (e: Exception) {
                 Gdx.app.error(APP_LOG_TAG, "low-poly view failed, using the debug view: ${e.message}", e)
                 null
@@ -204,9 +205,16 @@ class AntApp(private val label: String, private val world: World, private val tv
                 APP_LOG_TAG,
                 "view ${viewTitle()} fps ${Gdx.graphics.framesPerSecond} p50 ${frames.percentile(0.5f)} " +
                     "p99 ${frames.percentile(0.99f)} max ${frames.max()} slow ${frames.countOver(25f)}/${frames.count} tick ${h.tick} " +
-                    "ticks/s ${f1(h.ticksPerSecond)} ms/tick ${f2(h.msPerTickAvg)} max ${f2(h.msPerTickMax)} resets ${h.resets}" + antCounts(),
+                    "ticks/s ${f1(h.ticksPerSecond)} ms/tick ${f2(h.msPerTickAvg)} max ${f2(h.msPerTickMax)} resets ${h.resets}" + antCounts() + vertexCounts(),
             )
         }
+    }
+
+    /** The low-poly view's per-frame average vertices per layer since the last log line, or nothing outside that view. */
+    private fun vertexCounts(): String {
+        val look = look ?: return ""
+        val s = look.vertexSummary()
+        return if (view == View.SURFACE_3D) s else ""
     }
 
     /** The low-poly view's last frame of ants for the log: detailed, simple (of which shadowed) and culled by distance and by view. */
