@@ -26,15 +26,19 @@ import com.bydesigninteractive.ant.core.render.InstancingCheck
 import com.bydesigninteractive.ant.core.render.NestRenderer
 import com.bydesigninteractive.ant.core.render.Shaders
 import com.bydesigninteractive.ant.core.render.Sprites
+import com.bydesigninteractive.ant.core.render.SurfaceRenderer3D
 import com.bydesigninteractive.ant.core.render.SurfaceTopRenderer
+import com.bydesigninteractive.ant.core.render.sky.DayCycle
 import com.bydesigninteractive.ant.core.stub.FrameStats
 import com.bydesigninteractive.ant.core.ui.DebugReadout
+import com.bydesigninteractive.ant.sim.DT
 import com.bydesigninteractive.ant.sim.World
 import com.bydesigninteractive.ant.sim.ant.Role
 import com.bydesigninteractive.ant.sim.ant.Space
 import com.bydesigninteractive.ant.sim.world.CHUNKS
 import com.bydesigninteractive.ant.sim.world.CHUNK_MM
 import java.util.Locale
+import kotlin.math.roundToLong
 
 const val APP_LOG_TAG = "AntFarm"
 
@@ -66,6 +70,9 @@ class AntApp(private val label: String, private val world: World, private val tv
     private lateinit var nestRenderer: NestRenderer
     private lateinit var topRenderer: SurfaceTopRenderer
     private lateinit var renderer3d: DebugSurfaceRenderer
+
+    /** The low-poly 3D view, or null when GL 3 instancing is unavailable (then [renderer3d] draws). */
+    private var look: SurfaceRenderer3D? = null
     private lateinit var published: Published
     private lateinit var runner: SimRunner
     private val states = AntStates()
@@ -125,6 +132,14 @@ class AntApp(private val label: String, private val world: World, private val tv
         instanced = InstancingCheck.run()
         Gdx.app.log(APP_LOG_TAG, "gl ${Gdx.graphics.glVersion.majorVersion}.${Gdx.graphics.glVersion.minorVersion} instancing $instanced")
         checkShaders()
+        if (instanced) {
+            look = try {
+                SurfaceRenderer3D(seed, published)
+            } catch (e: IllegalStateException) {
+                Gdx.app.error(APP_LOG_TAG, "low-poly view failed, using the debug view: ${e.message}")
+                null
+            }
+        }
         runner = SimRunner(world, published)
         runner.start()
     }
@@ -144,6 +159,7 @@ class AntApp(private val label: String, private val world: World, private val tv
         ortho.viewportWidth = width.toFloat()
         ortho.viewportHeight = height.toFloat()
         renderer3d.resize(width, height)
+        look?.resize(width, height)
         hud.setToOrtho2D(0f, 0f, width.toFloat(), height.toFloat())
         font.data.setScale(1.4f * height / 1080f)
     }
@@ -269,11 +285,20 @@ class AntApp(private val label: String, private val world: World, private val tv
 
     private fun draw3d(dt: Float) {
         val a = followed()
+        val look = look
         when {
             a != null && a.space == Space.SURFACE -> chase.update(a.x, a.y, a.z, a.fx, a.fy, a.fz, a.nx, a.ny, a.nz, dt)
-            !chase.placed -> chase.update(entranceX, entranceY, renderer3d.groundHeight(entranceX, entranceY), 1f, 0f, 0f, 0f, 0f, 1f, dt)
+            !chase.placed -> {
+                val z = look?.groundHeight(entranceX, entranceY) ?: renderer3d.groundHeight(entranceX, entranceY)
+                chase.update(entranceX, entranceY, z, 1f, 0f, 0f, 0f, 0f, 1f, dt)
+            }
         }
-        renderer3d.draw(chase, drawn, states.foods)
+        if (look != null) {
+            // Seconds into the current simulated day, wrapped in Long ticks so the Float stays precise on long runs.
+            look.draw(chase, drawn, states.foods, (states.tick % TICKS_PER_DAY) * DT, animator)
+        } else {
+            renderer3d.draw(chase, drawn, states.foods)
+        }
     }
 
     private fun drawHud(dt: Float) {
@@ -393,6 +418,7 @@ class AntApp(private val label: String, private val world: World, private val tv
 
     override fun dispose() {
         shutdown()
+        look?.dispose()
         renderer3d.dispose()
         topRenderer.dispose()
         nestRenderer.dispose()
@@ -420,5 +446,6 @@ class AntApp(private val label: String, private val world: World, private val tv
         const val FOCUS_EVERY_S = 0.25f
         const val PAN_PX_PER_S = 700f
         const val LOG_EVERY_S = 10f
+        val TICKS_PER_DAY = (DayCycle.DAY_SECONDS / DT).roundToLong()
     }
 }
