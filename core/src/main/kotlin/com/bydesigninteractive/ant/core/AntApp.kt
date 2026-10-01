@@ -272,7 +272,7 @@ class AntApp(private val label: String, private val world: World, private val tv
         ortho.update()
         batch.projectionMatrix = ortho.combined
         batch.begin()
-        nestRenderer.draw(batch, ortho, drawn, antRegions, animator, pixel)
+        nestRenderer.draw(batch, ortho, drawn, antRegions, animator, pixel, (states.tick % TICKS_PER_DAY) * DT)
         batch.end()
     }
 

@@ -10,6 +10,8 @@ import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.utils.Disposable
 import com.bydesigninteractive.ant.core.engine.AntPose
 import com.bydesigninteractive.ant.core.engine.Published
+import com.bydesigninteractive.ant.core.render.sky.DayCycle
+import com.bydesigninteractive.ant.core.render.sky.SkyState
 import com.bydesigninteractive.ant.sim.ant.Space
 import com.bydesigninteractive.ant.sim.util.unit
 import com.bydesigninteractive.ant.sim.world.Material
@@ -35,8 +37,11 @@ class NestRenderer(
     private val textures = HashMap<Int, Texture>()
     private val versions = HashMap<Int, Long>()
     private var built = 0
+    private val sky = SkyState()
+    private val skyQuad = FloatArray(20)
+    private val lit = FloatArray(3)
 
-    fun draw(batch: SpriteBatch, cam: OrthographicCamera, poses: List<AntPose>, regions: Array<TextureRegion>, animator: AntAnimator, pixel: Texture) {
+    fun draw(batch: SpriteBatch, cam: OrthographicCamera, poses: List<AntPose>, regions: Array<TextureRegion>, animator: AntAnimator, pixel: Texture, daySeconds: Float) {
         built = 0
         val halfW = cam.viewportWidth * cam.zoom / 2
         val halfH = cam.viewportHeight * cam.zoom / 2
@@ -45,8 +50,11 @@ class NestRenderer(
         val ty0 = floor(-(cam.position.y + halfH) / TILE).toInt().coerceAtLeast(0)
         val ty1 = floor(-(cam.position.y - halfH) / TILE).toInt().coerceAtMost(tilesY - 1)
 
-        batch.setColor(0.30f, 0.45f, 0.20f, 1f) // the ground surface above the slice
-        batch.draw(pixel, 0f, 0f, width.toFloat(), 6f)
+        DayCycle.sky(DayCycle.timeOfDay(daySeconds), sky)
+        drawSky(batch, cam, pixel, halfW, halfH)
+        NestLight.lit(sky, 0.30f, 0.45f, 0.20f, lit) // the ground surface above the slice, lit by the sky
+        batch.setColor(lit[0], lit[1], lit[2], 1f)
+        batch.draw(pixel, 0f, 0f, width.toFloat(), GROUND_MM)
         for (ty in ty0..ty1) for (tx in tx0..tx1) {
             val x = (tx * TILE).toFloat()
             val y = -((ty + 1) * TILE).toFloat()
@@ -65,6 +73,38 @@ class NestRenderer(
             if (p.space != Space.NEST) continue
             batch.draw(regions[animator.frame(p)], p.x - 2.5f, -p.y - 1.25f, 2.5f, 1.25f, 5f, 2.5f, 1f, 1f, -p.heading * MathUtils.radiansToDegrees)
         }
+    }
+
+    /** Fills everything above the ground strip with the sky gradient: horizon colour at the ground, blending to the top colour [SKY_BLEND_MM] higher. */
+    private fun drawSky(batch: SpriteBatch, cam: OrthographicCamera, pixel: Texture, halfW: Float, halfH: Float) {
+        val x0 = cam.position.x - halfW
+        val x1 = cam.position.x + halfW
+        val top = cam.position.y + halfH
+        if (top <= GROUND_MM) return
+        val mid = minOf(top, GROUND_MM + SKY_BLEND_MM)
+        val f = (mid - GROUND_MM) / SKY_BLEND_MM
+        val h = sky.skyHorizon
+        val t = sky.skyTop
+        val horizon = Color.toFloatBits(h[0], h[1], h[2], 1f)
+        val midBits = Color.toFloatBits(h[0] + (t[0] - h[0]) * f, h[1] + (t[1] - h[1]) * f, h[2] + (t[2] - h[2]) * f, 1f)
+        quad(batch, pixel, x0, GROUND_MM, x1, mid, horizon, midBits)
+        if (top > mid) {
+            val topBits = Color.toFloatBits(t[0], t[1], t[2], 1f)
+            quad(batch, pixel, x0, mid, x1, top, midBits, topBits)
+        }
+    }
+
+    /** A vertical-gradient rectangle: [bottom] colour along y0, [topColor] along y1. */
+    private fun quad(batch: SpriteBatch, pixel: Texture, x0: Float, y0: Float, x1: Float, y1: Float, bottom: Float, topColor: Float) {
+        val v = skyQuad
+        fun put(i: Int, x: Float, y: Float, c: Float) {
+            v[i] = x; v[i + 1] = y; v[i + 2] = c; v[i + 3] = 0f; v[i + 4] = 0f
+        }
+        put(0, x0, y0, bottom)
+        put(5, x0, y1, topColor)
+        put(10, x1, y1, topColor)
+        put(15, x1, y0, bottom)
+        batch.draw(pixel, v, 0, 20)
     }
 
     private fun tile(tx: Int, ty: Int): Texture? {
@@ -121,6 +161,10 @@ class NestRenderer(
 
     private companion object {
         const val BUILDS_PER_FRAME = 16
+
+        /** The ground strip's top edge, and the height over which the sky blends from horizon to top colour. */
+        const val GROUND_MM = 6f
+        const val SKY_BLEND_MM = 400f
         /** Dug tunnels: a medium-dark brown (about 108/82/60), darker than the soil but lighter than the near-black ants. */
         val AIR = Color(0.424f, 0.322f, 0.235f, 1f)
 
