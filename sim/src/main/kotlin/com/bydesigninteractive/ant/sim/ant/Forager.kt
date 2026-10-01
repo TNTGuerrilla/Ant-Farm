@@ -137,7 +137,11 @@ internal object Forager {
             return true
         }
         val plant = s.nearestPlant(a.x, a.y, p.plantOdourRadius) ?: return false
-        SurfaceWalk.faceDirection(a, plant.x - a.x, plant.y - a.y, 0f)
+        val px = plant.x - a.x
+        val py = plant.y - a.y
+        // Making no headway (a rock in the way): walk on by the normal search rules for a while.
+        if (Detour.detouring(w, a, plant.id, sqrt(px * px + py * py))) return false
+        SurfaceWalk.faceDirection(a, px, py, 0f)
         SurfaceWalk.step(w, a, p.surfaceSpeed)
         return true
     }
@@ -240,8 +244,11 @@ internal object Forager {
             return
         }
         when {
-            toEntrance <= p.homeSightRadius ->
-                SurfaceWalk.faceToward(a, s.entranceX, s.entranceY, s.ground.height(s.entranceX, s.entranceY))
+            toEntrance <= p.homeSightRadius -> {
+                if (!Detour.detouring(w, a, Detour.NEST_SIGHT, toEntrance)) {
+                    SurfaceWalk.faceToward(a, s.entranceX, s.entranceY, s.ground.height(s.entranceX, s.entranceY))
+                }
+            }
             a.homeDx * a.homeDx + a.homeDy * a.homeDy > HOME_VECTOR_DONE * HOME_VECTOR_DONE -> {
                 a.runLeft -= p.surfaceSpeed * DT
                 if (a.runLeft <= 0f) {

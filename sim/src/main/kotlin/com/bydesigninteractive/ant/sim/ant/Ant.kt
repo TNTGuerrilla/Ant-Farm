@@ -50,6 +50,15 @@ class Ant(val id: Int, val role: Role, val desiredCrop: Float, val laysTrail: Bo
     var senseL = 0f
     var senseR = 0f
 
+    // Obstacle detours ([Detour]): the target being tracked, the tick it was last tracked, the
+    // closest horizontal distance to it so far, the time since that last improved, and how much
+    // of the current detour is left to walk (mm).
+    var detourKey = Detour.NONE
+    var detourTick = -1L
+    var detourMark = 0f
+    var detourTimer = 0f
+    var detourLeft = 0f
+
     // Nest walking: the cell the ant stands on and the one it is heading for.
     var cellX = 0
     var cellY = 0

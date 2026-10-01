@@ -100,7 +100,8 @@ internal object Digger {
         val s = w.surface
         val dx = s.entranceX - a.x
         val dy = s.entranceY - a.y
-        if (sqrt(dx * dx + dy * dy) <= p.entranceRadius) {
+        val dist = sqrt(dx * dx + dy * dy)
+        if (dist <= p.entranceRadius) {
             w.enterNest(a)
             a.state = AntState.IDLE
             return
@@ -111,7 +112,9 @@ internal object Digger {
             a.state = AntState.DUMP
             return
         }
-        SurfaceWalk.faceToward(a, s.entranceX, s.entranceY, s.ground.height(s.entranceX, s.entranceY))
+        if (!Detour.detouring(w, a, Detour.NEST_SIGHT, dist)) {
+            SurfaceWalk.faceToward(a, s.entranceX, s.entranceY, s.ground.height(s.entranceX, s.entranceY))
+        }
         SurfaceWalk.step(w, a, p.surfaceSpeed)
     }
 }

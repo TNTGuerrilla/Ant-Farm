@@ -89,6 +89,14 @@ data class AntParams(
     val stemLeaveHeight: Float = 10f,
     val homeSightRadius: Float = 60f,
     val entranceRadius: Float = 5f,
+    // Obstacle detours: an ant steering every tick for a plant or the nest entrance in sight that
+    // has not got at least detourProgressMm closer (horizontally) within detourStallSeconds turns
+    // about 90 degrees to a random side and walks a run of exponential length, mean detourRunMm,
+    // without steering for the target, then tries again. Without it, the plant steering parked
+    // ants on a rock's widest point.
+    val detourProgressMm: Float = 2f,
+    val detourStallSeconds: Float = 2f,
+    val detourRunMm: Float = 40f,
     // Fields (section 5): weak trails decay 0.4% per second
     val trailDecay: Float = 0.004f,
     val trailDiffusion: Float = 0f,
