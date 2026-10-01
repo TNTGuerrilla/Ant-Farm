@@ -22,7 +22,9 @@ import com.bydesigninteractive.ant.core.engine.SimRunner
 import com.bydesigninteractive.ant.core.render.AntAnimator
 import com.bydesigninteractive.ant.core.render.ChunkTextures
 import com.bydesigninteractive.ant.core.render.DebugSurfaceRenderer
+import com.bydesigninteractive.ant.core.render.InstancingCheck
 import com.bydesigninteractive.ant.core.render.NestRenderer
+import com.bydesigninteractive.ant.core.render.Shaders
 import com.bydesigninteractive.ant.core.render.Sprites
 import com.bydesigninteractive.ant.core.render.SurfaceTopRenderer
 import com.bydesigninteractive.ant.core.stub.FrameStats
@@ -89,6 +91,7 @@ class AntApp(private val label: String, private val world: World, private val tv
     private var failureLogged = false
     private var hudLines: List<String> = emptyList()
     private var hudAge = HUD_EVERY_S
+    private var instanced = false
 
     override fun create() {
         batch = SpriteBatch()
@@ -119,8 +122,21 @@ class AntApp(private val label: String, private val world: World, private val tv
             }
         }
         Gdx.app.log(APP_LOG_TAG, "start $label ${Gdx.graphics.width}x${Gdx.graphics.height} seed $seed")
+        instanced = InstancingCheck.run()
+        Gdx.app.log(APP_LOG_TAG, "gl ${Gdx.graphics.glVersion.majorVersion}.${Gdx.graphics.glVersion.minorVersion} instancing $instanced")
+        checkShaders()
         runner = SimRunner(world, published)
         runner.start()
+    }
+
+    /** Compiles each of the look's programs once and logs the result, so a shader error shows on the first run. */
+    private fun checkShaders() {
+        try {
+            listOf(Shaders::world, Shaders::ants, Shaders::grass, Shaders::shadows, Shaders::sky).forEach { it().dispose() }
+            Gdx.app.log(APP_LOG_TAG, "shaders ok")
+        } catch (e: IllegalStateException) {
+            Gdx.app.error(APP_LOG_TAG, "shaders failed: ${e.message}")
+        }
     }
 
     override fun resize(width: Int, height: Int) {

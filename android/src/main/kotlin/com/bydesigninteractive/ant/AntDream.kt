@@ -42,6 +42,7 @@ internal const val WORLD_SEED = 1L
 internal fun gdxConfig() = AndroidApplicationConfiguration().apply {
     useAccelerometer = false
     useCompass = false
+    useGL30 = true
 }
 
 internal fun describe(event: KeyEvent): String {
