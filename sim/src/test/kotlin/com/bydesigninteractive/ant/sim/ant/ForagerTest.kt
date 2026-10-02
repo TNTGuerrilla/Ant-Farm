@@ -3,6 +3,7 @@ package com.bydesigninteractive.ant.sim.ant
 import com.bydesigninteractive.ant.sim.World
 import com.bydesigninteractive.ant.sim.world.FoodKind
 import com.bydesigninteractive.ant.sim.world.FoodSource
+import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,8 +48,8 @@ class ForagerTest {
     // stays random; with a trail on one side most foragers head out along it.
     @Test
     fun emergingForagersHeadForTheTrailSideAtTheExit() {
-        fun count(trail: Boolean): Pair<Int, Int> {
-            val w = World(7, rocks = false)
+        fun count(trail: Boolean, seed: Long = 7): Pair<Int, Int> {
+            val w = World(seed, rocks = false)
             w.predig(1)
             val s = w.surface
             if (trail) { // a strong trail (about 5 T) on the +x side of the entrance only
@@ -71,11 +72,17 @@ class ForagerTest {
                 if (dx / d > 0.5f) plus++
                 if (dx / d < -0.5f) minus++
             }
-            println("exit choice, trail $trail: toward +x $plus, toward -x $minus")
+            println("exit choice, seed $seed, trail $trail: toward +x $plus, toward -x $minus")
             return plus to minus
         }
-        val (bareP, bareM) = count(false)
-        assertTrue(bareP in 40..95 && bareM in 40..95, "no trail: toward +x $bareP, toward -x $bareM")
+        // With no trail the two sides get about a third of the 200 each (cos above 0.5), so a
+        // binomial spread of about 11.5 in their difference; 35 is three of those. Task 8d added
+        // the symmetry bound and the second seed: the range alone would pass a 2.4 times bias.
+        for (seed in longArrayOf(7, 8)) {
+            val (bareP, bareM) = count(false, seed)
+            assertTrue(bareP in 40..95 && bareM in 40..95, "seed $seed, no trail: toward +x $bareP, toward -x $bareM")
+            assertTrue(abs(bareP - bareM) < 35, "seed $seed, no trail: toward +x $bareP, toward -x $bareM")
+        }
         val (plus, minus) = count(true)
         assertTrue(plus > 120 && plus > 4 * minus, "with a trail toward +x: toward +x $plus, toward -x $minus")
     }

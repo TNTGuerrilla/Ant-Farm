@@ -355,6 +355,39 @@ class SeedBrainTest {
         assertTrue(fresh > at300, "fresh $fresh, 300 s $at300")
     }
 
+    // Task 8d: crowding is highest at the entrance, so the cuts together must never stop a full
+    // forager marking there; and the strongest deposit is at most 5.6 times the weakest (Czaczkes 2013).
+    @Test
+    fun theHomewardDepositHoldsUnderCrowdingAndStrongTrails() {
+        fun trail(t: Float) = t / (t + 1f) // a reading of t times T, as Senses normalises it
+        fun at(contact: Float, t: Float, seconds: Float) = deposit(
+            Senses.CROP to 1f, Senses.FULL to 1f,
+            Senses.FED_RECENT to exp(-seconds / Senses.FED_TAU),
+            Senses.CONTACT_RATE to contact,
+            Senses.TRAIL_L to trail(t), Senses.TRAIL_R to trail(t),
+        )
+        val fresh = at(0f, 0f, 0f)
+        val cases = mapOf(
+            "crowded, 20 s" to at(0.67f, 0f, 20f),
+            "crowded, 60 s" to at(0.67f, 0f, 60f),
+            "trail at T, 120 s" to at(0f, 1f, 120f),
+            "trail at 2 T, 60 s" to at(0f, 2f, 60f),
+            "crowded on a trail at T, fresh" to at(0.67f, 1f, 0f),
+        )
+        var worst = Float.MAX_VALUE
+        for (contact in floatArrayOf(0f, 0.67f, 1f)) {
+            for (t in floatArrayOf(0f, 1f, 2f, 3f)) {
+                for (seconds in floatArrayOf(0f, 20f, 60f, 120f, 300f)) worst = minOf(worst, at(contact, t, seconds))
+            }
+        }
+        val combined = at(1f, 3f, 300f)
+        println("homeward deposit: fresh $fresh, $cases, worst $worst, crowding 1 + 3 T + 300 s $combined")
+        for ((name, d) in cases) assertTrue(d >= Outputs.DEPOSIT_MIN, "$name: $d")
+        assertTrue(combined >= Outputs.DEPOSIT_MIN, "crowding 1, 3 T, 300 s: $combined")
+        assertTrue(worst >= Outputs.DEPOSIT_MIN, "worst $worst")
+        assertTrue(fresh / worst <= 5.6f, "fresh $fresh over worst $worst")
+    }
+
     @Test
     fun aHomewardAntEntersAndASearcherDoesNot() {
         assertTrue(logit(outputs(*full), Action.ENTER) >= 5f)

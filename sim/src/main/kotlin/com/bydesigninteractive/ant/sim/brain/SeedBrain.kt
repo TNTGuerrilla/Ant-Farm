@@ -20,7 +20,7 @@ package com.bydesigninteractive.ant.sim.brain
  * recurrence" of spec section 3.
  */
 internal object SeedBrain {
-    const val HIDDEN = 22
+    const val HIDDEN = 23
     const val GATE = 8f
 
     // Modes.
@@ -54,6 +54,9 @@ internal object SeedBrain {
     const val U_RING = 19
     const val U_RING_TURN = 20
     const val U_RING_TURN_MIRROR = 21
+
+    // The deposit's cut (Task 8d): crowding, a strong trail and time since feeding, saturated together.
+    const val U_CUT = 22
 
     /**
      * The ring relay's slope and midpoint in the RING input (s / (s + T)): about -0.76 at half the
@@ -274,39 +277,56 @@ internal object SeedBrain {
         b.recurrentSignal(U_HOMING, U_HOMING_MIRROR, U_NOISE, 0.22f)
         b.turn(U_HOMING, U_HOMING_MIRROR, 0.5f)
         // Deposit: only at the desired fill (FULL); more right after feeding (near the food),
-        // less when crowded and on a trail that is already strong. A fresh, uncrowded forager's
+        // less when crowded and on a trail that is already strong. Two units: U_DEPOSIT is the
+        // gate (FULL), U_CUT the cut, both read by the output. A fresh, uncrowded forager's
         // deposit is 0.30, a mark of 0.67 (a third of the trail threshold T at the default
         // markAmount), so a trail reaches T only where several foragers lay over each other
         // within the trail's lifetime: below about 75 workers trails barely form (Mailleux 2003,
-        // simulation reference section 2). Without a full crop the unit sits near -1 and the
-        // deposit at 0.011, below Outputs.DEPOSIT_MIN (nothing laid). Crowding (CONTACT_RATE
-        // 0.67, about 10 contacts in 10 s) cuts the fresh deposit to 0.062, 4.8 times less, and a
-        // strong trail (each antenna at 4 T) to 0.072, 4.1 times less (Czaczkes 2013: up to 5.6
-        // times less when crowded; high pheromone suppresses deposition). Task 8c strengthened
-        // both cuts (crowding -0.32 to -0.8, saturation -0.08 to -0.3 per antenna, which had cut
-        // only to a half and two thirds): with the homeward deposit holding to the nest, the busy
-        // trail kept growing and a crowded colony never left it for a better source (Gruter 2012:
-        // crowding is the negative feedback that lets colonies switch). The bias goes through the BIAS
-        // input so personal variation keeps the threshold. Task 8b lowered the deposit (fresh
-        // 0.96, a mark above T on its own, and crowding and saturation cuts of -1.5 and -0.75
-        // each) because a 30-forager colony kept its trails at several times T, and the cuts
-        // held a 150-forager colony's trails at about the same strength, so colony size made no
-        // difference to recruitment.
-        // Time since feeding (FED_RECENT, tau 60 s) raises the deposit near the food but must
-        // not end it on the way home: a full forager keeps laying all the way to the nest, about
-        // 0.10 at 120 s after feeding and 0.09 at 300 s, a third of the fresh deposit (simulation
-        // reference section 5: more near the food, up to 22 times within 10 cm, and trails that
-        // reach the nest from distant food). Task 8c: with FED_RECENT at 1 and the bias at -4.09
-        // the deposit fell below Outputs.DEPOSIT_MIN about 60 s after feeding, so trails to far
-        // sources stopped short of the nest.
-        b.input(U_DEPOSIT, Senses.FULL, 3f)
-        b.input(U_DEPOSIT, Senses.FED_RECENT, 0.4f)
-        b.input(U_DEPOSIT, Senses.CONTACT_RATE, -0.8f)
-        b.input(U_DEPOSIT, Senses.TRAIL_L, -0.3f)
-        b.input(U_DEPOSIT, Senses.TRAIL_R, -0.3f)
-        b.input(U_DEPOSIT, Senses.BIAS, -3.49f)
-        b.output(Outputs.DEPOSIT, U_DEPOSIT, 4f)
-        b.outputBias(Outputs.DEPOSIT, -0.5f)
+        // simulation reference section 2). Without a full crop the gate sits at -1 and the
+        // deposit at 0.014, below Outputs.DEPOSIT_MIN (nothing laid).
+        //
+        // The cut is one saturating unit, so the cuts together can never take a full forager
+        // below a floor of about 0.071, 4.2 times less than fresh (Czaczkes 2013: up to 5.6
+        // times less when crowded; high pheromone suppresses deposition; simulation reference
+        // section 5). Alone, each cut reaches most of that range: crowding (CONTACT_RATE 0.67,
+        // about 10 contacts in 10 s) cuts the fresh deposit to 0.072 (0.20 at CONTACT_RATE 0.2),
+        // a strong trail (each antenna at 4 T) to 0.081 (0.14 at T), and time since feeding
+        // (FED_RECENT, tau 60 s) to 0.12 at 120 s and 0.10 at 300 s. Any combination of
+        // crowding up to CONTACT_RATE 1, trails up to 3 T and up to 300 s since feeding stays at
+        // 0.071 or more, so a full forager keeps
+        // marking all the way to the nest, through the crowded entrance where all trails meet.
+        // Task 8d: with the cuts summed in one unit (crowding -0.8, saturation -0.3 per antenna,
+        // FED_RECENT 0.4), a crowded returner 20 s after feeding deposited 0.047, below
+        // DEPOSIT_MIN, so the trail stopped short of the entrance.
+        //
+        // Personal variation: the output bias (sd 0.3) shifts the whole band in logit, so the
+        // floor holds for an ant whose bias is at most 0.37 below the seed's (about 1.25 sd, nine
+        // ants in ten); the rest stop marking only in the worst combination, near the 14% of
+        // foragers that never lay trail (Mailleux 2005). The not-full deposit stays below
+        // DEPOSIT_MIN up to about +1.2 in bias. The input-row scaling (sd 0.1) moves the cut's
+        // midpoint a little but not its saturated floor.
+        //
+        // Weights: the cut unit sits at tanh(-1.5) = -0.905 when fresh, uncrowded and off trail
+        // (bias 0.7 minus FED_RECENT 2.2), and the output reads it at -0.9, so its full range
+        // (-0.905 to +1) is 1.71 in logit: 0.298 to 0.071. Crowding 6, saturation 1.7 per
+        // antenna. Task 8d calibration: crowding at 4.2 (0.080 when crowded) raised the
+        // 150-forager following to 0.34 but let only 3 of 8 crowded colonies switch; at 6, 6 of 8
+        // switch (see the Task 8d report). Task 8c had strengthened the crowding and saturation
+        // cuts (to 4.8 and 4.1 times less) because a busy trail kept growing and a crowded colony never left it for a better
+        // source (Gruter 2012: crowding is the negative feedback that lets colonies switch). Task
+        // 8b lowered the fresh deposit from 0.96 (a mark above T on its own) because a 30-forager
+        // colony kept its trails at several times T. Thresholds go through the BIAS input so
+        // personal variation keeps them.
+        b.input(U_DEPOSIT, Senses.FULL, 6f)
+        b.input(U_DEPOSIT, Senses.BIAS, -3f)
+        b.input(U_CUT, Senses.CONTACT_RATE, 6f)
+        b.input(U_CUT, Senses.TRAIL_L, 1.7f)
+        b.input(U_CUT, Senses.TRAIL_R, 1.7f)
+        b.input(U_CUT, Senses.FED_RECENT, -2.2f)
+        b.input(U_CUT, Senses.BIAS, 0.7f)
+        b.output(Outputs.DEPOSIT, U_DEPOSIT, 2f)
+        b.output(Outputs.DEPOSIT, U_CUT, -0.9f)
+        b.outputBias(Outputs.DEPOSIT, -3.66f)
         // Enter at the entrance when homeward (logit +6); a searcher passing by does not (-6).
         b.output(b.action(Action.ENTER), U_HOME, 6f)
     }
