@@ -27,6 +27,16 @@ The desktop app runs a young colony: scripted diggers extend the nest and script
 
 Keys: Tab cycles views, Space pauses, 1/2/3 set speed 1x/4x/16x, WASD or arrows pan, +/- or the mouse wheel zoom, F follows the next forager, P toggles the trail overlay; in the 3D debug view the arrows pick the ant. `--seed=N` picks the world, and `--stub` runs the M0 stub (`.\gradlew.bat :desktop:run --args="--stub"`).
 
+## Realism search (M2a)
+
+The instinct brain is refined by a realism search that ranks brain variants against field observations and classic experiments. On Windows run it on the performance cores, at below-normal priority, with:
+
+```powershell
+.\scripts\search.ps1
+```
+
+It takes up to an hour with 14 workers on a 16-thread P-core CPU and writes `build/search/report.md`, the best genome of each generation, and `winner.genome` when a variant passes the Gruter test. `-DryRun` only prints the detected P-core threads. Without the script, `.\gradlew.bat :sim:search -PsearchArgs="--workers 6"` runs the same search with no affinity.
+
 ## On the TV
 
 The TV dream and the launcher activity run the app (milestone M1b-2a). It starts in the 3D debug view; OK cycles the views and Back ends the dream. The simulation runs on its own thread at 20 ticks per second, and the log (tag `AntFarm`) prints ticks per second, milliseconds per tick and frame times every 10 s.
