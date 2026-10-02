@@ -10,9 +10,13 @@ import com.bydesigninteractive.ant.sim.world.DistanceMap
 import com.bydesigninteractive.ant.sim.world.FoodKind
 import com.bydesigninteractive.ant.sim.world.FoodSource
 import com.bydesigninteractive.ant.sim.world.GroundTemperature
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
@@ -31,51 +35,57 @@ internal object Senses {
     /**
      * m2a-2: the seed brain grew to 19 hidden units and personal variation became per unit, which
      * retires m2a-1 genomes. m2a-3: the normalised trail difference [TRAIL_DIFF] was added after
-     * [TRAIL_R], which moves every later input and retires m2a-2 genomes.
+     * [TRAIL_R], which moves every later input and retires m2a-2 genomes. m2a-4 (Task 8c): the
+     * saturated total [TRAIL_SUM] and the trail ring ([RING_BEARING], [RING_COS], [RING]) follow
+     * [TRAIL_DIFF], which retires m2a-3 genomes.
      */
-    const val LAYOUT = "m2a-3"
+    const val LAYOUT = "m2a-4"
 
     const val TRAIL_L = 0
     const val TRAIL_R = 1
     const val TRAIL_DIFF = 2
-    const val FOOT_L = 3
-    const val FOOT_R = 4
-    const val HOME_SIN = 5
-    const val HOME_COS = 6
-    const val HOME_DIST = 7
-    const val HONEYDEW = 8
-    const val HONEYDEW_SIN = 9
-    const val PREY = 10
-    const val PREY_SIN = 11
-    const val CROP = 12
-    const val FULL = 13
-    const val RESERVES = 14
-    const val AGE = 15
-    const val TEMPERATURE = 16
-    const val HEALTH = 17
-    const val DAMAGE = 18
-    const val CONTACT_RATE = 19
-    const val RETURNERS = 20
-    const val MET_SUCCESS = 21
-    const val MET_HONEYDEW = 22
-    const val MET_PREY = 23
-    const val NUDGE = 24
-    const val FED_RECENT = 25
-    const val SPOIL = 26
-    const val ROOM_NEEDED = 27
-    const val DIGGER = 28
-    const val ON_STEM = 29
-    const val AT_FOOD = 30
-    const val IN_NEST = 31
-    const val CARRYING = 32
-    const val DIG_SITE = 33
-    const val AT_ENTRANCE = 34
-    const val NOISE = 35
-    const val BIAS = 36
-    const val COUNT = 37
+    const val TRAIL_SUM = 3
+    const val RING_BEARING = 4
+    const val RING_COS = 5
+    const val RING = 6
+    const val FOOT_L = 7
+    const val FOOT_R = 8
+    const val HOME_SIN = 9
+    const val HOME_COS = 10
+    const val HOME_DIST = 11
+    const val HONEYDEW = 12
+    const val HONEYDEW_SIN = 13
+    const val PREY = 14
+    const val PREY_SIN = 15
+    const val CROP = 16
+    const val FULL = 17
+    const val RESERVES = 18
+    const val AGE = 19
+    const val TEMPERATURE = 20
+    const val HEALTH = 21
+    const val DAMAGE = 22
+    const val CONTACT_RATE = 23
+    const val RETURNERS = 24
+    const val MET_SUCCESS = 25
+    const val MET_HONEYDEW = 26
+    const val MET_PREY = 27
+    const val NUDGE = 28
+    const val FED_RECENT = 29
+    const val SPOIL = 30
+    const val ROOM_NEEDED = 31
+    const val DIGGER = 32
+    const val ON_STEM = 33
+    const val AT_FOOD = 34
+    const val IN_NEST = 35
+    const val CARRYING = 36
+    const val DIG_SITE = 37
+    const val AT_ENTRANCE = 38
+    const val NOISE = 39
+    const val BIAS = 40
+    const val COUNT = 41
 
     val NAMES = arrayOf(
-        "trailL", "trailR", "trailDiff", "footL", "footR", "homeSin", "homeCos", "homeDist",
+        "trailL", "trailR", "trailDiff", "trailSum", "ringBearing", "ringCos", "ring", "footL", "footR", "homeSin", "homeCos", "homeDist",
         "honeydew", "honeydewSin", "prey", "preySin",
         "crop", "full", "reserves", "age", "temperature", "health", "damage",
         "contactRate", "returners", "metSuccess", "metHoneydew", "metPrey", "nudge",
@@ -94,6 +104,34 @@ internal object Senses {
 
     /** Keeps (L - R) / (L + R) finite; far below any reading the gate lets through. */
     const val DIFF_EPS = 1e-3f
+
+    /** Directions sampled on the trail ring ([ring]), evenly spaced by compass bearing. */
+    const val RING_DIRECTIONS = 16
+
+    /**
+     * The trail ring's radius (mm). It stands for what a worker learns in its first moments
+     * outside: at the nest mouth Lasius workers pause, sweep their antennae and take a few short
+     * scanning steps before setting off, and with a body of about 4 mm and antennae of about 3 mm a
+     * few such steps reach about 20 mm. It is also twice the trail field's 10 mm voxel, so the
+     * samples (7.9 mm apart on the ring) always catch a trail that crosses it, and the trails that
+     * converge on the entrance are already apart at that distance. (Task 8b's innate exit choice
+     * sampled 40 mm around the entrance, which no antenna reaches.)
+     */
+    const val RING_RADIUS = 20f
+
+    /**
+     * The trail ring is sensed only within this distance (mm) of the entrance, the junction where
+     * every trail of the colony meets. Further out trails part and an ant meets them one at a time
+     * with its antennae; sampling the ring there would cost 32 field and height reads per
+     * evaluation for every surface ant (the TV budget, spec 1.6) for little gain.
+     */
+    const val RING_NEAR = 40f
+
+    private val ringCos = FloatArray(RING_DIRECTIONS) { cos(it * 2.0 * PI / RING_DIRECTIONS).toFloat() }
+    private val ringSin = FloatArray(RING_DIRECTIONS) { sin(it * 2.0 * PI / RING_DIRECTIONS).toFloat() }
+
+    /** Ring samples at or below this (far below any trail an ant can follow) count as no trail. */
+    const val RING_FLOOR = 1e-4f
 
     const val FOOT_HALF = 0.5f
     const val HOME_HALF = 500f
@@ -143,10 +181,13 @@ internal object Senses {
         x[TRAIL_L] = a.senseL / (a.senseL + p.trailThreshold)
         x[TRAIL_R] = a.senseR / (a.senseR + p.trailThreshold)
         x[TRAIL_DIFF] = trailDiff(a.senseL, a.senseR, p.trailThreshold)
+        val sum = a.senseL + a.senseR
+        x[TRAIL_SUM] = sum / (sum + p.trailThreshold)
 
         val ex = s.entranceX - a.x
         val ey = s.entranceY - a.y
         val toEntrance = sqrt(ex * ex + ey * ey)
+        if (toEntrance <= RING_NEAR) ring(w, a, x)
         val inSight = toEntrance <= p.homeSightRadius
         val hx = if (inSight) ex else -a.homeDx
         val hy = if (inSight) ey else -a.homeDy
@@ -209,6 +250,44 @@ internal object Senses {
         val gate = ((sum / threshold - DIFF_FROM) / (DIFF_FULL - DIFF_FROM)).coerceIn(0f, 1f)
         if (gate <= 0f) return 0f
         return gate * (l - r) / (sum + DIFF_EPS)
+    }
+
+    /**
+     * The trail ring (Task 8c): the strongest trail on a circle of [RING_RADIUS] around the ant,
+     * as an ant sweeping its antennae at the nest mouth finds it. Writes [RING] (the strongest
+     * sample s as s / (s + T), 0 to 1), [RING_BEARING] (its bearing from the ant's heading as an
+     * angle over pi, -1 to 1, positive to the left) and [RING_COS] (the bearing's cosine). The
+     * bearing is an angle, not its sine, so a trail behind the ant reads as a full turn rather
+     * than as none: a sine is 0 both ahead and behind. The bearing is refined between the [RING_DIRECTIONS] samples
+     * by a parabola through the strongest one and its neighbours, so it varies continuously as the
+     * ant turns and moves, not in 22.5 degree steps. With no trail on the ring all three stay 0.
+     * Reads the trail field and the ground height [RING_DIRECTIONS] times each; draws no random
+     * number. Called only within [RING_NEAR] of the entrance.
+     */
+    fun ring(w: World, a: Ant, x: FloatArray) {
+        val s = w.surface
+        val v = w.ringSamples
+        var best = 0
+        for (i in 0 until RING_DIRECTIONS) {
+            val px = a.x + ringCos[i] * RING_RADIUS
+            val py = a.y + ringSin[i] * RING_RADIUS
+            v[i] = s.trail.get(px, py, s.ground.height(px, py))
+            if (v[i] > v[best]) best = i
+        }
+        val top = v[best]
+        if (top <= RING_FLOOR) return
+        val l = v[(best + RING_DIRECTIONS - 1) % RING_DIRECTIONS]
+        val r = v[(best + 1) % RING_DIRECTIONS]
+        val curve = l - 2f * top + r
+        val shift = if (curve < 0f) (0.5f * (l - r) / curve).coerceIn(-0.5f, 0.5f) else 0f
+        val angle = (best + shift) * 2f * PI.toFloat() / RING_DIRECTIONS
+        val dx = cos(angle)
+        val dy = sin(angle)
+        val bs = bearingSin(a, dx, dy)
+        val bc = bearingCos(a, dx, dy)
+        if (bs != 0f || bc != 0f) x[RING_BEARING] = atan2(bs, bc) / PI.toFloat()
+        x[RING_COS] = bc
+        x[RING] = top / (top + w.params.trailThreshold)
     }
 
     /** True while the ant is committed to a feed (the FEED primitive is running). */

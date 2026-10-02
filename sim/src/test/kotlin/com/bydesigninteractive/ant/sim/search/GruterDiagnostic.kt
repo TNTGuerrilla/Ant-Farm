@@ -17,6 +17,8 @@ import kotlin.test.Test
  * share, trail marks, the strongest trail, trips and where the searchers are). It runs only when
  * the environment variable ANT_DIAG is set, for example
  * `ANT_DIAG=1 DIAG_SEEDS=1,2,3 DIAG_SCALE=0.5 ./gradlew --no-daemon :sim:test --tests '*GruterDiagnostic*'`.
+ * DIAG_RUNS picks the phases: small, large, crowded, and starter (Task 8c: the starter colony for
+ * 20 minutes, with its trail marks and strongest trail).
  */
 @EnabledIfEnvironmentVariable(named = "ANT_DIAG", matches = ".+")
 class GruterDiagnostic {
@@ -68,6 +70,15 @@ class GruterDiagnostic {
                     Locale.ROOT, "crowded seed %d: loser %d share %.3f before %s after %s marks %d trailMax %.2f",
                     seed, loser, share, before.toSortedMap(), after.toSortedMap(), w.trailMarks, w.surface.trail.max(),
                 )
+            }
+            "starter" -> {
+                // Task 8c: the colony the owner watches on the TV; 20 simulated minutes (times the scale).
+                val w = Scenarios.starter(seed)
+                m.run(w, m.minutes(10, scale))
+                val s = Sampler(w)
+                s.run(m.minutes(10, scale))
+                String.format(Locale.ROOT, "starter seed %d: total marks %d trailMax %.2f trail blocks %d; ", seed, w.trailMarks, w.surface.trail.max(), w.surface.trail.blockCount()) +
+                    s.line()
             }
             else -> error("unknown run $run")
         }

@@ -3,7 +3,6 @@ package com.bydesigninteractive.ant.sim.ant
 import com.bydesigninteractive.ant.sim.World
 import com.bydesigninteractive.ant.sim.world.FoodKind
 import com.bydesigninteractive.ant.sim.world.FoodSource
-import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -43,34 +42,42 @@ class ForagerTest {
         assertTrue(w.surface.trail.max() > 0f)
     }
 
-    // Task 8b: the trail choice at the nest exit (an innate primitive again, without the scripted join chance).
+    // Task 8c: the trail choice at the nest exit is the brain's (the trail ring and the seed
+    // brain's exit circuit); Task 8b's innate exit primitive is gone. With no trail the way out
+    // stays random; with a trail on one side most foragers head out along it.
     @Test
-    fun emergingForagersFaceTheStrongerSideAtTheExit() {
-        val w = World(7)
-        w.predig(1)
-        val s = w.surface
-        fun count(): Pair<Int, Int> {
+    fun emergingForagersHeadForTheTrailSideAtTheExit() {
+        fun count(trail: Boolean): Pair<Int, Int> {
+            val w = World(7, rocks = false)
+            w.predig(1)
+            val s = w.surface
+            if (trail) { // a strong trail (about 5 T) on the +x side of the entrance only
+                var x = s.entranceX + 10f
+                while (x < s.entranceX + 200f) {
+                    s.trail.add(x, s.entranceY, s.ground.height(x, s.entranceY), 10f)
+                    x += 10f
+                }
+            }
+            val ants = List(200) { w.addAnt(Role.FORAGER) }
+            for (a in ants) w.exitNest(a)
+            repeat(60) { w.step() } // 3 s, about 60 mm of walking
             var plus = 0
             var minus = 0
-            repeat(500) {
-                val a = w.addAnt(Role.FORAGER)
-                w.exitNest(a)
-                Primitives.faceExitTrail(w, a)
-                if (cos(a.heading) > 0.5f) plus++
-                if (cos(a.heading) < -0.5f) minus++
+            for (a in ants) {
+                if (a.space != Space.SURFACE) continue
+                val dx = a.x - s.entranceX
+                val d = hypot(dx, a.y - s.entranceY)
+                if (d < 1f) continue
+                if (dx / d > 0.5f) plus++
+                if (dx / d < -0.5f) minus++
             }
+            println("exit choice, trail $trail: toward +x $plus, toward -x $minus")
             return plus to minus
         }
-        val (bareP, bareM) = count()
-        assertTrue(bareP in 100..220 && bareM in 100..220, "no trail: toward +x $bareP, toward -x $bareM")
-        // A trail on the +x side of the entrance only.
-        var x = s.entranceX + 10f
-        while (x < s.entranceX + 200f) {
-            s.trail.add(x, s.entranceY + 1f, s.ground.height(x, s.entranceY + 1f), 10f)
-            x += 10f
-        }
-        val (plus, minus) = count()
-        assertTrue(plus > 250 && plus > 3 * minus, "with a trail toward +x: toward +x $plus, toward -x $minus")
+        val (bareP, bareM) = count(false)
+        assertTrue(bareP in 40..95 && bareM in 40..95, "no trail: toward +x $bareP, toward -x $bareM")
+        val (plus, minus) = count(true)
+        assertTrue(plus > 120 && plus > 4 * minus, "with a trail toward +x: toward +x $plus, toward -x $minus")
     }
 
     @Test

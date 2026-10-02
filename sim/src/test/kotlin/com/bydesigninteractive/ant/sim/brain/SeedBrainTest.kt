@@ -3,6 +3,7 @@ package com.bydesigninteractive.ant.sim.brain
 import com.bydesigninteractive.ant.sim.ant.AntParams
 import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.math.cos
 import kotlin.math.tanh
 import kotlin.test.Test
 import java.util.Random
@@ -25,12 +26,24 @@ class SeedBrainTest {
         return o
     }
 
+    /**
+     * The input vector. Unless TRAIL_SUM is set, it is derived from TRAIL_L and TRAIL_R as Senses
+     * computes it from the raw readings (Task 8c added it; the relay reads it), so the older tests
+     * that set only the two antennae read the same trail as before.
+     */
     private fun inputs(vararg set: Pair<Int, Float>): FloatArray {
         val x = FloatArray(Senses.COUNT)
         x[Senses.BIAS] = 1f
         x[Senses.RESERVES] = 1f
         for ((i, v) in set) x[i] = v
+        if (set.none { it.first == Senses.TRAIL_SUM }) x[Senses.TRAIL_SUM] = trailSum(x[Senses.TRAIL_L], x[Senses.TRAIL_R])
         return x
+    }
+
+    /** TRAIL_SUM from the saturated antennae: each reads r / (r + T), so r = T v / (1 - v). */
+    private fun trailSum(l: Float, r: Float): Float {
+        val sum = l / (1f - l) + r / (1f - r) // in units of T
+        return sum / (sum + 1f)
     }
 
     /** Ant [id]'s personal network, as World gives it. */
@@ -167,6 +180,7 @@ class SeedBrainTest {
             repeat(5) { b.evaluate(x, h, s, o) }
             x[Senses.TRAIL_L] = then / 2f
             x[Senses.TRAIL_R] = then / 2f
+            x[Senses.TRAIL_SUM] = trailSum(then / 2f, then / 2f)
             repeat(20) { b.evaluate(x, h, s, o) }
             return h[SeedBrain.U_TRAIL_ON]
         }
@@ -174,6 +188,60 @@ class SeedBrainTest {
         assertTrue(relay(0.8f, 0.4f) > 0.9f, "between 0.3 T and T it stays on")
         assertTrue(relay(0f, 0.4f) < -0.9f, "between 0.3 T and T it stays off")
         assertTrue(relay(0.8f, 0.2f) < -0.9f, "below 0.3 T it turns off")
+    }
+
+    // Task 8c: the relay reads the total, so it agrees with the following state however unequally
+    // the antennae read: one antenna at T and the other at 0 is a trail, as Actions.follow says.
+    @Test
+    fun theTrailRelayReadsTheTotalOfBothAntennae() {
+        val t = AntParams().trailThreshold
+        fun relay(l: Float, r: Float): Float {
+            val b = genome.brain()
+            val h = FloatArray(genome.hidden)
+            val s = FloatArray(genome.hidden)
+            val o = FloatArray(genome.outputs)
+            repeat(5) { b.evaluate(inputs(), h, s, o) } // off the trail first, as an ant comes to one
+            val sum = l + r
+            val x = inputs(Senses.TRAIL_L to l / (l + t), Senses.TRAIL_R to r / (r + t), Senses.TRAIL_SUM to sum / (sum + t))
+            repeat(5) { b.evaluate(x, h, s, o) }
+            return h[SeedBrain.U_TRAIL_ON]
+        }
+        assertTrue(relay(1.1f * t, 0f) > 0.9f, "one antenna above T")
+        assertTrue(relay(0.55f * t, 0.55f * t) > 0.9f, "both at half T and a bit")
+        assertTrue(relay(0.9f * t, 0f) < -0.9f, "one antenna below T")
+    }
+
+    // Task 8c: the exit choice. Near the entrance, a searcher not yet on a trail turns toward the
+    // strongest trail on the ring, harder the stronger it is, and not at all with no trail.
+    @Test
+    fun aSearcherTurnsTowardTheStrongestTrailOnTheRing() {
+        fun ring(strengthInT: Float, degrees: Float) = arrayOf(
+            Senses.RING to strengthInT / (strengthInT + 1f), Senses.RING_BEARING to degrees / 180f,
+            Senses.RING_COS to cos(Math.toRadians(degrees.toDouble())).toFloat(),
+        )
+        val weak = turn(outputs(*ring(0.5f, 30f)))
+        val atT = turn(outputs(*ring(1f, 30f)))
+        val strong = turn(outputs(*ring(4f, 30f)))
+        val strongRight = turn(outputs(*ring(4f, -30f)))
+        val behind = turn(outputs(*ring(4f, 170f)))
+        println("ring turn at 30 degrees: 0.5 T $weak, T $atT, 4 T $strong rad/s")
+        assertTrue(abs(weak) < 0.2f, "half the threshold $weak")
+        assertTrue(atT > 0.5f && atT < 0.6f * strong, "at the threshold $atT, strong $strong")
+        assertTrue(strong > 2f, "four times the threshold $strong")
+        assertEquals(-strong, strongRight, 1e-4f)
+        assertTrue(behind > strong, "a strong trail behind $behind")
+        assertEquals(0f, turn(outputs(Senses.RING to 0f, Senses.RING_BEARING to 0f)), 1e-6f)
+    }
+
+    @Test
+    fun theRingTurnActsOnlyWhileSearchingOffTheTrail() {
+        val ring = arrayOf(Senses.RING to 0.8f, Senses.RING_BEARING to 1f / 6f, Senses.RING_COS to 0.87f)
+        val searching = turn(outputs(*ring))
+        val onTrail = turn(outputs(*ring, Senses.TRAIL_L to 0.5f, Senses.TRAIL_R to 0.5f))
+        val homeward = turn(outputs(*ring, *full))
+        assertTrue(searching > 2f, "searching $searching")
+        assertTrue(abs(onTrail) < 0.05f, "on a trail $onTrail")
+        assertTrue(abs(homeward) < 0.05f, "homeward $homeward")
     }
 
     // Task 8b: on a trail, a searcher turns away from home (path integration), so it follows the trail outward.
@@ -272,6 +340,19 @@ class SeedBrainTest {
         assertTrue(crowded < 0.8f * fresh && crowded > fresh / 5.6f, "crowded $crowded, fresh $fresh")
         val onTrail = deposit(*full, Senses.TRAIL_L to 0.8f, Senses.TRAIL_R to 0.8f)
         assertTrue(onTrail < 0.9f * fresh && onTrail > fresh / 5.6f, "on a strong trail $onTrail, fresh $fresh")
+    }
+
+    // Task 8c: the homeward deposit holds all the way to the nest, highest just after feeding.
+    @Test
+    fun aFullForagerStillLaysTrailLongAfterFeeding() {
+        fun later(seconds: Float) = deposit(Senses.CROP to 1f, Senses.FULL to 1f, Senses.FED_RECENT to exp(-seconds / Senses.FED_TAU))
+        val fresh = later(0f)
+        val at120 = later(120f)
+        val at300 = later(300f)
+        println("deposit after feeding: 0 s $fresh, 120 s $at120, 300 s $at300")
+        assertTrue(at120 >= Outputs.DEPOSIT_MIN, "120 s after feeding $at120")
+        assertTrue(at300 >= Outputs.DEPOSIT_MIN, "300 s after feeding $at300")
+        assertTrue(fresh > at300, "fresh $fresh, 300 s $at300")
     }
 
     @Test

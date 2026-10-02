@@ -47,10 +47,11 @@ class FingerprintTest {
         assertEquals(DETOUR, fingerprint(w))
     }
 
-    // Re-recorded in M2a Task 8 (every ant runs the instinct brain) and 8b (trail following).
+    // Re-recorded in M2a Task 8 (every ant runs the instinct brain) and 8b (trail following), and 8c
+    // (the exit trail choice as a brain sense, the homeward deposit).
     private companion object {
-        const val STARTER = "sum=573753.7009821638 trail=5 home=89 trailMax=0.5866279 homeMax=0.8992291 feeds=2 unloads=0 ants=80 rng=8471752498746914134"
-        const val DETOUR = "sum=481446.4140669968 trail=12 home=76 trailMax=2.3364508 homeMax=0.6653569 feeds=16 unloads=0 ants=80 rng=-8468741863998431981"
-        const val COLONY = "sum=7196387.902465055 trail=0 home=32 trailMax=0.0 homeMax=3.1059964 feeds=0 unloads=0 ants=1000 rng=-6538686098725575125"
+        const val STARTER = "sum=553038.823445081 trail=2 home=66 trailMax=0.5550268 homeMax=0.77703196 feeds=5 unloads=0 ants=80 rng=-4843803057271561394"
+        const val DETOUR = "sum=529449.6958413239 trail=15 home=71 trailMax=1.2492471 homeMax=0.7412029 feeds=11 unloads=0 ants=80 rng=6129150620878513864"
+        const val COLONY = "sum=7198363.902427793 trail=0 home=32 trailMax=0.0 homeMax=2.7108583 feeds=0 unloads=0 ants=1000 rng=-9208119064235116845"
     }
 }

@@ -78,8 +78,8 @@ class World(
     internal val mask = BooleanArray(Action.COUNT)
     internal val actionWeights = FloatArray(Action.COUNT)
 
-    // The trail choice at the nest exit (Primitives.faceExitTrail; one simulation thread).
-    internal val exitWeights = FloatArray(com.bydesigninteractive.ant.sim.ant.Primitives.EXIT_DIRECTIONS)
+    // The trail ring's samples (Senses.ring; one simulation thread).
+    internal val ringSamples = FloatArray(com.bydesigninteractive.ant.sim.brain.Senses.RING_DIRECTIONS)
 
     /** Recent feeding events, oldest first, for the last [FEED_WINDOW_TICKS] ticks. */
     val feedEvents = ArrayDeque<FeedEvent>()

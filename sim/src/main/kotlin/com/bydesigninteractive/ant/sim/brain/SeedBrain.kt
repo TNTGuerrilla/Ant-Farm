@@ -6,7 +6,7 @@ package com.bydesigninteractive.ant.sim.brain
  *
  * Mode units (SEARCH, HOME, CARRY) threshold the inputs and hold themselves on. Relay units
  * threshold or pass on a signal that several units need: trail present (TRAIL_ON), odour received
- * (ODOUR) and the noise (NOISE). Steering is done by mirror pairs: the plus member gets a signal
+ * (ODOUR), the noise (NOISE) and a trail on the ring (RING). Steering is done by mirror pairs: the plus member gets a signal
  * and the minus member gets its negative, both get the same gate, and the turn output reads them
  * with weights +w and -w. An open gate (0) gives 2w tanh(signal); a shut gate (-2 [GATE] or less)
  * pins both members at -1, where they cancel. For any gate value the pair's output is odd in its
@@ -20,7 +20,7 @@ package com.bydesigninteractive.ant.sim.brain
  * recurrence" of spec section 3.
  */
 internal object SeedBrain {
-    const val HIDDEN = 19
+    const val HIDDEN = 22
     const val GATE = 8f
 
     // Modes.
@@ -50,12 +50,45 @@ internal object SeedBrain {
     const val U_DEPOSIT = 17
     const val U_GO = 18
 
+    // The exit choice (Task 8c): a relay for the ring's strength and its mirror pair.
+    const val U_RING = 19
+    const val U_RING_TURN = 20
+    const val U_RING_TURN_MIRROR = 21
+
+    /**
+     * The ring relay's slope and midpoint in the RING input (s / (s + T)): about -0.76 at half the
+     * threshold, 0 at the threshold, 0.76 at twice it and 0.95 at four times.
+     */
+    const val RING_SLOPE = 6f
+    const val RING_MID = 0.5f
+
+    /** How far the ring relay opens the exit pair's gate: shut (-2 [RING_GATE]) with no trail, open with a strong one. */
+    const val RING_GATE = 2f
+
+    /**
+     * The exit pair's gain on the ring bearing (RING_BEARING, the angle over pi): 3 pi, the
+     * odour's 3 per unit of sine for small angles, so the pair is near saturation 30 degrees off
+     * and fully saturated toward a trail behind.
+     */
+    const val RING_TURN = 9.42f
+
+    /**
+     * The exit pair's weight on the turn output, which sets how decisive the exit choice is: about
+     * 2.3 rad/s toward a strong trail 30 degrees off (0.5, the other pairs' weight, gave 2.9).
+     * Calibrated in Task 8c to the fork accuracy of the simulation reference (section 5: 74 to 83%
+     * per junction, Czaczkes 2017): with one strong trail (marks of 10, five times T, every 10 mm)
+     * leaving the entrance, 78% of foragers are out along it (within 45 degrees) 5 s later (25% with the pair off, by chance and by meeting the
+     * trail; 94% at 0.5). See the Task 8c report for the Gruter runs behind the choice.
+     */
+    const val RING_OUT = 0.35f
+
     fun genome(): Genome {
         val b = Builder()
         modes(b)
         relays(b)
         goOut(b)
         search(b)
+        exitChoice(b)
         feedAndUnload(b)
         returnHome(b)
         dig(b)
@@ -96,16 +129,20 @@ internal object SeedBrain {
     /** Signals several pairs share, so each pair reads them through exact recurrent weights. */
     private fun relays(b: Builder) {
         // Trail present, latched with the thresholds of the following state (Actions.follow): it
-        // turns on when TRAIL_L + TRAIL_R reaches 0.667 (each antenna at half the threshold
-        // concentration T, so T for the two together) and, through its self-connection (4.06),
-        // stays on until the sum falls below 0.261 (0.3 T together). The steep slope (20)
-        // saturates the unit within 0.25 either side. Task 8b: it used to switch at 0.75 with no
-        // latch (about 1.2 T), so a follower wandered on a trail until it read well above the
-        // threshold and wandered again at every dip below it.
-        b.input(U_TRAIL_ON, Senses.TRAIL_L, 20f)
-        b.input(U_TRAIL_ON, Senses.TRAIL_R, 20f)
-        b.input(U_TRAIL_ON, Senses.BIAS, -9.28f)
-        b.recurrent(U_TRAIL_ON, U_TRAIL_ON, 4.06f)
+        // reads the saturated total TRAIL_SUM = (L + R) / (L + R + T), the same total the
+        // following state reads, so the two agree however unequally the antennae read. It turns
+        // on at TRAIL_SUM 0.5 (L + R = T) and, through its self-connection (6.12), stays on until
+        // TRAIL_SUM falls below 0.231 (L + R = 0.3 T), both thresholds checked numerically to
+        // 0.001. Slope 30 and bias -10.96 put the band's centre at 0.365; the self-connection
+        // sets its width: a tanh latch u = tanh(x + r u) flips where its other fixed point
+        // vanishes, at x = +-(r v - atanh v) with v = sqrt(1 - 1 / r), which is 4.04 for r = 6.12,
+        // half of 30 (0.5 - 0.231). Task 8b: it
+        // switched at 0.75 with no latch (about 1.2 T). Task 8c: it summed the two saturated
+        // antennae, L / (L + T) + R / (R + T), which matches L + R = T only when they read the
+        // same; with one antenna at T and the other at 0 the following state was on and the relay off.
+        b.input(U_TRAIL_ON, Senses.TRAIL_SUM, 30f)
+        b.input(U_TRAIL_ON, Senses.BIAS, -10.96f)
+        b.recurrent(U_TRAIL_ON, U_TRAIL_ON, 6.12f)
         // Odour received from a nestmate in the last Contacts.MET_SECONDS: either flag turns it
         // fully on (8 - 4 = +4), none leaves it fully off (-4).
         b.input(U_ODOUR, Senses.MET_HONEYDEW, 8f)
@@ -183,6 +220,39 @@ internal object SeedBrain {
         b.turn(U_FOOT, U_FOOT_MIRROR, 0.5f)
     }
 
+    /**
+     * Circuit 2 at the nest mouth (Task 8c): turn toward the strongest trail on the ring around
+     * the ant (Senses.ring), sensed only near the entrance, where all the colony's trails meet.
+     * The ring relay grades the pair's gate by the trail's strength: with no trail it is shut
+     * (the heading stays the random one the ant came out with); at half the threshold T it turns
+     * at under 0.1 rad/s toward a trail 30 degrees off, at T about 0.8 rad/s, and from twice T
+     * nearly the full 2.3 rad/s ([RING_OUT]). Open only while searching and not yet on a trail:
+     * once the antennae read the trail, the trail steering and the outward bias take over.
+     *
+     * Why this reproduces Deneubourg's choice (k + s)^n at the junction (simulation reference
+     * section 5: forks taken by relative trail strength, 74 to 83% per junction, Czaczkes 2017;
+     * collective choice, Beckers 1990), which Task 8b's innate exit rule computed directly: the
+     * turn always points at the strongest trail, but its strength grows steeply with s / (s + T)
+     * while the outbound walk's noise stays the same. A trail well below T barely bends the walk,
+     * so the ant leaves in a random direction (the k term); a strong one wins against the noise
+     * nearly every time; between, the ant reaches the trail it turned toward only some of the
+     * time, and the trail following (the TRAIL_DIFF steer) then holds whichever trail its
+     * antennae meet first. The choice is therefore graded and increasing in s, steeper than
+     * linear, like (k + s)^n, without any extra randomness: the only draw is the noise input.
+     * Measured with trails on both sides of the entrance (marks of 10 against 5 every 10 mm), 62%
+     * of foragers go out along the stronger and 34% along the weaker; 10 against 2, 71% and 19%.
+     * The pair is odd in RING_BEARING, so it never biases the turn when the ring is empty.
+     */
+    private fun exitChoice(b: Builder) {
+        b.input(U_RING, Senses.RING, RING_SLOPE)
+        b.input(U_RING, Senses.BIAS, -RING_SLOPE * RING_MID)
+        b.whenOn(U_RING_TURN, U_RING_TURN_MIRROR, U_SEARCH)
+        b.whenOff(U_RING_TURN, U_RING_TURN_MIRROR, U_TRAIL_ON)
+        b.graded(U_RING_TURN, U_RING_TURN_MIRROR, U_RING, RING_GATE)
+        b.signal(U_RING_TURN, U_RING_TURN_MIRROR, Senses.RING_BEARING, RING_TURN)
+        b.turn(U_RING_TURN, U_RING_TURN_MIRROR, RING_OUT)
+    }
+
     /** Circuits 3 and 5: the masks hold the conditions, so a high bias is the whole rule. */
     private fun feedAndUnload(b: Builder) {
         b.outputBias(b.action(Action.FEED), 6f) // at food with an empty crop: feed (P about 0.998)
@@ -210,20 +280,31 @@ internal object SeedBrain {
         // within the trail's lifetime: below about 75 workers trails barely form (Mailleux 2003,
         // simulation reference section 2). Without a full crop the unit sits near -1 and the
         // deposit at 0.011, below Outputs.DEPOSIT_MIN (nothing laid). Crowding (CONTACT_RATE
-        // 0.67, about 10 contacts in 10 s) cuts the deposit to 0.16, about half, and a strong
-        // trail (each antenna at 4 T) to 0.20, two thirds (Czaczkes 2013: up to 5.6 times less
-        // when crowded; high pheromone suppresses deposition). The bias goes through the BIAS
+        // 0.67, about 10 contacts in 10 s) cuts the fresh deposit to 0.062, 4.8 times less, and a
+        // strong trail (each antenna at 4 T) to 0.072, 4.1 times less (Czaczkes 2013: up to 5.6
+        // times less when crowded; high pheromone suppresses deposition). Task 8c strengthened
+        // both cuts (crowding -0.32 to -0.8, saturation -0.08 to -0.3 per antenna, which had cut
+        // only to a half and two thirds): with the homeward deposit holding to the nest, the busy
+        // trail kept growing and a crowded colony never left it for a better source (Gruter 2012:
+        // crowding is the negative feedback that lets colonies switch). The bias goes through the BIAS
         // input so personal variation keeps the threshold. Task 8b lowered the deposit (fresh
         // 0.96, a mark above T on its own, and crowding and saturation cuts of -1.5 and -0.75
         // each) because a 30-forager colony kept its trails at several times T, and the cuts
         // held a 150-forager colony's trails at about the same strength, so colony size made no
         // difference to recruitment.
+        // Time since feeding (FED_RECENT, tau 60 s) raises the deposit near the food but must
+        // not end it on the way home: a full forager keeps laying all the way to the nest, about
+        // 0.10 at 120 s after feeding and 0.09 at 300 s, a third of the fresh deposit (simulation
+        // reference section 5: more near the food, up to 22 times within 10 cm, and trails that
+        // reach the nest from distant food). Task 8c: with FED_RECENT at 1 and the bias at -4.09
+        // the deposit fell below Outputs.DEPOSIT_MIN about 60 s after feeding, so trails to far
+        // sources stopped short of the nest.
         b.input(U_DEPOSIT, Senses.FULL, 3f)
-        b.input(U_DEPOSIT, Senses.FED_RECENT, 1f)
-        b.input(U_DEPOSIT, Senses.CONTACT_RATE, -0.32f)
-        b.input(U_DEPOSIT, Senses.TRAIL_L, -0.08f)
-        b.input(U_DEPOSIT, Senses.TRAIL_R, -0.08f)
-        b.input(U_DEPOSIT, Senses.BIAS, -4.09f)
+        b.input(U_DEPOSIT, Senses.FED_RECENT, 0.4f)
+        b.input(U_DEPOSIT, Senses.CONTACT_RATE, -0.8f)
+        b.input(U_DEPOSIT, Senses.TRAIL_L, -0.3f)
+        b.input(U_DEPOSIT, Senses.TRAIL_R, -0.3f)
+        b.input(U_DEPOSIT, Senses.BIAS, -3.49f)
         b.output(Outputs.DEPOSIT, U_DEPOSIT, 4f)
         b.outputBias(Outputs.DEPOSIT, -0.5f)
         // Enter at the entrance when homeward (logit +6); a searcher passing by does not (-6).
@@ -296,6 +377,18 @@ internal object SeedBrain {
             for (u in intArrayOf(plus, minus)) {
                 recurrent(u, mode, -GATE)
                 bias(u, -GATE)
+            }
+        }
+
+        /**
+         * A graded gate condition: adds [v] times unit [relay]'s previous value and -[v] as a
+         * hidden bias to both members, so the gate is 0 (open) when the relay is +1, -2 [v] when
+         * it is -1, and in between otherwise. The pair stays odd in its signal at any gate value.
+         */
+        fun graded(plus: Int, minus: Int, relay: Int, v: Float) {
+            for (u in intArrayOf(plus, minus)) {
+                recurrent(u, relay, v)
+                bias(u, -v)
             }
         }
 

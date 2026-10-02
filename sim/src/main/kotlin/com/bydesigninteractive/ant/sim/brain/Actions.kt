@@ -272,8 +272,9 @@ internal object Actions {
 
     private fun leave(w: World, a: Ant) {
         if (!NestMotion.goUp(w, a)) return
+        // The heading out is the random one exitNest gives; the brain turns toward a trail it
+        // senses on the ring around it (Senses.ring, the seed brain's exit circuit).
         w.exitNest(a)
-        if (a.role == Role.FORAGER && !a.carriesPellet) Primitives.faceExitTrail(w, a)
         a.action = Action.WALK
     }
 

@@ -83,6 +83,53 @@ class SensesTest {
         assertEquals(Senses.trailDiff(a.senseL, a.senseR, w.params.trailThreshold), v[Senses.TRAIL_DIFF])
     }
 
+    // Task 8c: the saturated total the trail relay reads.
+    @Test
+    fun theTrailSumIsTheSaturatedTotal() {
+        val w = world()
+        val s = w.surface
+        val a = onSurface(w, s.entranceX + 200f, s.entranceY, 0f)
+        var x = a.x
+        while (x < a.x + 40f) {
+            s.trail.add(x, a.y + 5f, s.ground.height(x, a.y + 5f), 10f)
+            x += 5f
+        }
+        val v = read(w, a)
+        val sum = a.senseL + a.senseR
+        assertEquals(sum / (sum + w.params.trailThreshold), v[Senses.TRAIL_SUM], 1e-6f)
+    }
+
+    // Task 8c: the trail ring near the entrance.
+    @Test
+    fun theRingPointsAtTheStrongestTrailNearTheEntrance() {
+        val w = world()
+        val s = w.surface
+        val a = onSurface(w, s.entranceX, s.entranceY + 8f, 0f) // just out, facing +x
+        var empty = read(w, a)
+        assertEquals(0f, empty[Senses.RING])
+        assertEquals(0f, empty[Senses.RING_BEARING])
+        assertEquals(0f, empty[Senses.RING_COS])
+        // A trail leaving the entrance toward -y (to the ant's right and behind it) and a weaker one toward +y.
+        var y = s.entranceY - 10f
+        while (y > s.entranceY - 200f) {
+            s.trail.add(s.entranceX, y, s.ground.height(s.entranceX, y), 10f)
+            y -= 10f
+        }
+        y = s.entranceY + 40f
+        while (y < s.entranceY + 200f) {
+            s.trail.add(s.entranceX + 3f, y, s.ground.height(s.entranceX + 3f, y), 2f)
+            y += 10f
+        }
+        val v = read(w, a)
+        assertEquals(-0.5f, v[Senses.RING_BEARING], 0.1f, "bearing ${v[Senses.RING_BEARING]}")
+        assertTrue(abs(v[Senses.RING_COS]) < 0.4f, "bearing cos ${v[Senses.RING_COS]}")
+        assertTrue(v[Senses.RING] > 0.5f && v[Senses.RING] < 1f, "strength ${v[Senses.RING]}")
+        // The same trail is not sensed beyond RING_NEAR of the entrance.
+        val far = onSurface(w, s.entranceX + Senses.RING_NEAR + 5f, s.entranceY - 30f, 0f)
+        empty = read(w, far)
+        assertEquals(0f, empty[Senses.RING])
+    }
+
     @Test
     fun foodWithinReachIsTheTarget() {
         val w = world()

@@ -8,8 +8,8 @@ package com.bydesigninteractive.ant.sim.ant
  * gone: search runs and turns, the trail-following chance and gain, deposit saturation and
  * crowding, and the spoil drop and pick-up rates. Their values and the M1 to M1b-2b calibration
  * history against GruterScenarioTest are in git and in the seed brain's KDoc, which carried them
- * into circuits. The trail choice at the exit came back in M2a Task 8b as an innate primitive
- * with its own constants (`Primitives.faceExitTrail`). trailThreshold (1.96) stays: the senses
+ * into circuits. The trail choice at the exit, an innate primitive in M2a Task 8b, became a brain
+ * sense in Task 8c (the trail ring, `Senses.ring`). trailThreshold (1.96) stays: the senses
  * scale trail readings by it, and a searching forager starts following a trail when it reads at
  * least that much (`Actions.follow`).
  */
