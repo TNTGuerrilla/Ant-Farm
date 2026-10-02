@@ -42,6 +42,7 @@ class SignalsTest {
         a.space = Space.NEST
         repeat(20 * 30) { Body.tick(a) }
         assertEquals(1f, a.reserves, 1e-6f)
-        assertEquals(915f, a.ageSeconds, 20f) // float sums of 0.05 drift upward by about 1.6% over 18,600 ticks
+        // 20 * 900 + 20 * 30 = 18,600 ticks at DT 0.05 is exactly 930 s, derived from the tick count.
+        assertEquals(930f, Body.age(20L * 900 + 20L * 30, a), 0.01f)
     }
 }

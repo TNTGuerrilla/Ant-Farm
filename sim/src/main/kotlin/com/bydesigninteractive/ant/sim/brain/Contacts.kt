@@ -16,6 +16,9 @@ import kotlin.math.max
  * and records whether the nestmate was a successful forager (carrying food) and which food odour
  * it carried, for [MET_SECONDS]. On the surface, an oncoming forager that gave up (tired, empty)
  * leaves a nudge: the bearing of the direction it came from, its dead end, for [NUDGE_SECONDS].
+ *
+ * [update] must run once per tick for every ant: the decay, and the rule that the same nestmate
+ * on consecutive checks counts once, both assume it.
  */
 internal object Contacts {
     const val CONTACT_MM = 3f
@@ -31,7 +34,6 @@ internal object Contacts {
         a.contactTick = w.tick
         if (elapsed > 0f) {
             a.contactRate *= exp(-elapsed / RATE_SECONDS)
-            if (a.metSeconds < Body.NEVER) a.metSeconds += elapsed
             a.nudgeLeft = max(0f, a.nudgeLeft - elapsed)
         }
         val index = if (a.space == Space.SURFACE) w.surfaceIndex else w.nestIndex
@@ -43,7 +45,7 @@ internal object Contacts {
         if (other.id == a.lastContactId) return
         a.lastContactId = other.id
         a.contactRate += 1f
-        a.metSeconds = 0f
+        a.metTick = w.tick
         val loaded = other.crop > 0f
         a.metSuccess = loaded && other.role == Role.FORAGER
         a.metHoneydew = loaded && other.lastFoodKind == FoodKind.HONEYDEW

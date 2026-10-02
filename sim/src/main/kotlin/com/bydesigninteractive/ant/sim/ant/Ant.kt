@@ -79,10 +79,12 @@ class Ant(val id: Int, val role: Role, val desiredCrop: Float, val laysTrail: Bo
     // M2a brain state, read by Senses and written by Body and Contacts (unused by the scripted ants).
     /** Energy reserves, 0 to 1: fall outside, refill in the nest and on feeding ([Body]). */
     var reserves = 1f
-    var ageSeconds = 0f
 
-    /** Seconds since this ant last fed at a source. */
-    var sinceFed = Body.NEVER
+    /** The tick this ant's age counts from; age is `(tick - bornTick) * DT` ([Body.age]). Set it when the ant is spawned. */
+    var bornTick = 0L
+
+    /** The tick this ant last fed at a source, or [Body.NEVER_TICK] ([Body.sinceFed]). */
+    var fedTick = Body.NEVER_TICK
 
     // Contacts: the count decaying over 10 s and the tick it was last decayed, the last nestmate
     // touched (-1 when touching none), what that nestmate carried, how long ago, and the nudge.
@@ -92,7 +94,7 @@ class Ant(val id: Int, val role: Role, val desiredCrop: Float, val laysTrail: Bo
     var metSuccess = false
     var metHoneydew = false
     var metPrey = false
-    var metSeconds = Body.NEVER
+    var metTick = Body.NEVER_TICK
     var nudge = 0f
     var nudgeLeft = 0f
 }

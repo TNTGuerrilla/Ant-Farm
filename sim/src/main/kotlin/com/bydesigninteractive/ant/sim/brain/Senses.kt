@@ -19,6 +19,10 @@ import kotlin.math.sqrt
  * context flags, each scaled to about -1..1 (the table in the M2a plan, Task 4). [fill] writes
  * every value and draws exactly one number (the noise input) from the world's random generator.
  * Changing the order or meaning of any input must change [LAYOUT], which retires saved genomes.
+ *
+ * Two readings of the spec: the home-scent level of spec 2.1 is carried by [FOOT_L] and [FOOT_R]
+ * (their mean is the level), so it has no input of its own; and [RETURNERS] is the colony-wide
+ * count given to every nest ant, a simplification of "felt by contact in the nest".
  */
 internal object Senses {
     const val LAYOUT = "m2a-1"
@@ -89,18 +93,19 @@ internal object Senses {
         x[CROP] = if (a.desiredCrop > 0f) min(1f, a.crop / a.desiredCrop) else 0f
         x[FULL] = flag(a.crop > 0f && a.crop >= a.desiredCrop)
         x[RESERVES] = a.reserves
-        x[AGE] = a.ageSeconds / (a.ageSeconds + AGE_HALF)
+        val age = Body.age(w.tick, a)
+        x[AGE] = age / (age + AGE_HALF)
         val t = DayClock.timeOfDay(w.seconds)
         val celsius = if (a.space == Space.SURFACE) GroundTemperature.surface(t) else GroundTemperature.nest(t)
         x[TEMPERATURE] = (celsius - TEMP_MID) / TEMP_SPAN
         x[CONTACT_RATE] = a.contactRate / (a.contactRate + CONTACT_HALF)
-        if (a.metSeconds < Contacts.MET_SECONDS) {
+        if (Body.metSeconds(w.tick, a) < Contacts.MET_SECONDS) {
             x[MET_SUCCESS] = flag(a.metSuccess)
             x[MET_HONEYDEW] = flag(a.metHoneydew)
             x[MET_PREY] = flag(a.metPrey)
         }
         if (a.nudgeLeft > 0f) x[NUDGE] = a.nudge * (a.nudgeLeft / Contacts.NUDGE_SECONDS)
-        x[FED_RECENT] = exp(-a.sinceFed / FED_TAU)
+        x[FED_RECENT] = exp(-Body.sinceFed(w.tick, a) / FED_TAU)
         x[DIGGER] = flag(a.role == Role.DIGGER)
         x[CARRYING] = flag(a.carriesPellet)
         x[NOISE] = w.gaussian()

@@ -20,9 +20,22 @@ internal object Body {
     /** "Never happened": a time-since value that reads as long ago. */
     const val NEVER = 1e6f
 
+    /** The tick stamp that means "never happened"; [sinceFed] and [metSeconds] read it as [NEVER]. */
+    const val NEVER_TICK = Long.MIN_VALUE
+
+    /** Seconds since [Ant.bornTick], derived from the tick count so it never drifts. */
+    fun age(tick: Long, a: Ant): Float = (tick - a.bornTick) * DT
+
+    /** Seconds since the ant last fed, or [NEVER]. */
+    fun sinceFed(tick: Long, a: Ant): Float = since(tick, a.fedTick)
+
+    /** Seconds since the ant last touched a nestmate, or [NEVER]. */
+    fun metSeconds(tick: Long, a: Ant): Float = since(tick, a.metTick)
+
+    private fun since(tick: Long, stamp: Long): Float = if (stamp == NEVER_TICK) NEVER else (tick - stamp) * DT
+
+    /** Moves the reserves one tick; age and the timers are derived from tick stamps, not accumulated. */
     fun tick(a: Ant) {
-        a.ageSeconds += DT
-        if (a.sinceFed < NEVER) a.sinceFed += DT
         a.reserves = if (a.space == Space.SURFACE) max(0f, a.reserves - RESERVE_DECAY * DT)
         else min(1f, a.reserves + RESERVE_REFILL * DT)
     }

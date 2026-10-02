@@ -57,7 +57,7 @@ class ContactsTest {
         w.surfaceIndex.rebuild(listOf(a, b))
         Contacts.update(w, a)
         assertEquals(exp(-1f), a.contactRate, 1e-3f)
-        assertEquals(10f, a.metSeconds, 1e-3f)
+        assertEquals(10f, Body.metSeconds(w.tick, a), 1e-3f)
     }
 
     @Test
