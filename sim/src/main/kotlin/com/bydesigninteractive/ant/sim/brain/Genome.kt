@@ -27,11 +27,16 @@ class Genome(val inputs: Int, val hidden: Int, val outputs: Int, val weights: Fl
     fun brain(): Brain = Brain(inputs, hidden, outputs, weights.copyOf())
 
     /**
-     * The network ant [id] of a world with [worldSeed] is born with: each input weight scaled by
-     * (1 + [weightSd] g) and the biases of outputs [biasFrom] and up shifted by [biasSd] g, every
-     * g a standard normal from a seeded hash (no draw from the world's generator). Recurrent,
-     * hidden-bias and hidden-to-output weights stay exact, because the seed brain's gated units
-     * cancel in pairs through them; the bias spread is the spread in response thresholds.
+     * The network ant [id] of a world with [worldSeed] is born with: each hidden unit's input
+     * weights scaled together by (1 + [weightSd] g), one g per unit, and the biases of outputs
+     * [biasFrom] and up shifted by [biasSd] g, every g a standard normal from a seeded hash (no
+     * draw from the world's generator). The bias spread is the spread in response thresholds.
+     *
+     * Scaling a unit's whole input row, not each weight on its own, changes how sensitive the unit
+     * is but keeps the ratios between its inputs: a unit comparing the left and right antennae
+     * stays balanced when both read the same, and a threshold set through the BIAS input stays
+     * where it is. Recurrent, hidden-bias and hidden-to-output weights stay exact, because the seed
+     * brain's mirror pairs share their gates and noise through them and cancel through them.
      */
     fun personal(
         worldSeed: Long,
@@ -42,7 +47,10 @@ class Genome(val inputs: Int, val hidden: Int, val outputs: Int, val weights: Fl
     ): Brain {
         val w = weights.copyOf()
         val salt = worldSeed xor PERSONAL_SALT
-        for (k in 0 until hidden * inputs) w[k] *= 1f + weightSd * gaussian(salt, id, k)
+        for (j in 0 until hidden) {
+            val f = 1f + weightSd * gaussian(salt, id, j)
+            for (i in 0 until inputs) w[j * inputs + i] *= f
+        }
         for (o in biasFrom until outputs) {
             val k = Brain.outputBias(inputs, hidden, outputs, o)
             w[k] += biasSd * gaussian(salt, id, k)

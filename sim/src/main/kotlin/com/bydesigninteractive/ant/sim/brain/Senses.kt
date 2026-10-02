@@ -25,7 +25,8 @@ import kotlin.math.sqrt
  * count given to every nest ant, a simplification of "felt by contact in the nest".
  */
 internal object Senses {
-    const val LAYOUT = "m2a-1"
+    /** m2a-2: the seed brain grew to 19 hidden units and personal variation became per unit, which retires m2a-1 genomes. */
+    const val LAYOUT = "m2a-2"
 
     const val TRAIL_L = 0
     const val TRAIL_R = 1

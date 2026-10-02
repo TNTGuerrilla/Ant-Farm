@@ -46,6 +46,12 @@ class GenomeTest {
         assertFalse(a.contentEquals(other))
         // Input weights vary; recurrent, hidden-bias and hidden-to-output weights do not.
         assertTrue((0 until 3 * 4).any { a[it] != g.weights[it] })
+        // A unit's input weights scale together, so the ratios within a row are kept.
+        for (j in 0 until 3) {
+            val f = a[j * 4] / g.weights[j * 4]
+            for (i in 1 until 4) assertEquals(g.weights[j * 4 + i] * f, a[j * 4 + i], 1e-5f, "unit $j input $i")
+        }
+        assertTrue((0 until 3).map { a[it * 4] / g.weights[it * 4] }.distinct().size > 1)
         for (k in 3 * 4 until Brain.outputBias(4, 3, 5, 0)) assertEquals(g.weights[k], a[k], "weight $k")
         // Output biases below biasFrom stay exact; those from biasFrom on vary.
         for (o in 0 until 2) assertEquals(g.weights[Brain.outputBias(4, 3, 5, o)], a[Brain.outputBias(4, 3, 5, o)])

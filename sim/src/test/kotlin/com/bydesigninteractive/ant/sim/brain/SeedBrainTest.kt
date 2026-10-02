@@ -4,6 +4,7 @@ import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.tanh
 import kotlin.test.Test
+import java.util.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -12,17 +13,71 @@ class SeedBrainTest {
     private val genome = SeedBrain.genome()
 
     /** Runs the seed brain (no personal variation) three times on the same inputs so the modes settle; RESERVES 1 and BIAS 1 unless set. */
-    private fun outputs(vararg set: Pair<Int, Float>): FloatArray {
-        val b = genome.brain()
-        val x = FloatArray(Senses.COUNT)
-        x[Senses.BIAS] = 1f
-        x[Senses.RESERVES] = 1f
-        for ((i, v) in set) x[i] = v
+    private fun outputs(vararg set: Pair<Int, Float>): FloatArray = outputs(genome.brain(), *set)
+
+    private fun outputs(b: Brain, vararg set: Pair<Int, Float>): FloatArray {
+        val x = inputs(*set)
         val h = FloatArray(genome.hidden)
         val s = FloatArray(genome.hidden)
         val o = FloatArray(genome.outputs)
         repeat(3) { b.evaluate(x, h, s, o) }
         return o
+    }
+
+    private fun inputs(vararg set: Pair<Int, Float>): FloatArray {
+        val x = FloatArray(Senses.COUNT)
+        x[Senses.BIAS] = 1f
+        x[Senses.RESERVES] = 1f
+        for ((i, v) in set) x[i] = v
+        return x
+    }
+
+    /** Ant [id]'s personal network, as World gives it. */
+    private fun personal(id: Int) = genome.personal(WORLD_SEED, id, biasFrom = Outputs.DEPOSIT)
+
+    /**
+     * Steps [b] [steps] times on fixed inputs with persistent hidden state, the noise input drawn
+     * antithetically (+n, then -n) from a seeded generator, and returns the mean turn rate (rad/s).
+     */
+    private fun meanTurn(b: Brain, steps: Int, seed: Long, vararg set: Pair<Int, Float>): Double {
+        val x = inputs(*set)
+        val h = FloatArray(genome.hidden)
+        val s = FloatArray(genome.hidden)
+        val o = FloatArray(genome.outputs)
+        repeat(5) { b.evaluate(x, h, s, o) }
+        val r = Random(seed)
+        var n = 0f
+        var sum = 0.0
+        for (i in 0 until steps) {
+            if (i % 2 == 0) n = r.nextGaussian().toFloat()
+            x[Senses.NOISE] = if (i % 2 == 0) n else -n
+            b.evaluate(x, h, s, o)
+            sum += turn(o)
+        }
+        return sum / steps
+    }
+
+    /** Angular diffusion (rad^2/s) of the seed brain's walk: the turn rate's variance times the evaluation interval. */
+    private fun diffusion(vararg set: Pair<Int, Float>): Double {
+        val b = genome.brain()
+        val x = inputs(*set)
+        val h = FloatArray(genome.hidden)
+        val s = FloatArray(genome.hidden)
+        val o = FloatArray(genome.outputs)
+        repeat(5) { b.evaluate(x, h, s, o) }
+        val r = Random(11L)
+        var sum = 0.0
+        var sq = 0.0
+        val steps = 20_000
+        repeat(steps) {
+            x[Senses.NOISE] = r.nextGaussian().toFloat()
+            b.evaluate(x, h, s, o)
+            val t = turn(o).toDouble()
+            sum += t
+            sq += t * t
+        }
+        val mean = sum / steps
+        return (sq / steps - mean * mean) * EVAL_SECONDS
     }
 
     private fun turn(o: FloatArray) = Outputs.MAX_TURN_RATE * tanh(o[Outputs.TURN])
@@ -36,6 +91,7 @@ class SeedBrainTest {
         turn(outputs(Senses.NOISE to 1f, *set)) - turn(outputs(Senses.NOISE to -1f, *set))
 
     private val full = arrayOf(Senses.CROP to 1f, Senses.FULL to 1f, Senses.FED_RECENT to 1f)
+    private val carrying = arrayOf(Senses.DIGGER to 1f, Senses.CARRYING to 1f)
 
     @Test
     fun theGenomeFitsTheLayout() {
@@ -52,6 +108,35 @@ class SeedBrainTest {
         assertTrue(base in 0.2f..0.4f, "baseline $base")
         assertTrue(goOut(Senses.RETURNERS to 0.5f) > 0.9f)
         assertTrue(goOut(Senses.RESERVES to 0.8f) < 0.1f)
+    }
+
+    @Test
+    fun personalVariationSpreadsTheGoOutBaselineOnlyModerately() {
+        val drives = (0 until 50).map { sig(outputs(personal(it), Senses.IN_NEST to 1f)[Outputs.GO_OUT]) }
+        val lo = drives.min()
+        val hi = drives.max()
+        println("go-out baseline over 50 ants: min $lo, max $hi, mean ${drives.average()}")
+        assertTrue(lo >= 0.15f && hi <= 0.6f, "baseline go-out from $lo to $hi")
+    }
+
+    // The search/return latch: at reserves of 0.64, a searcher keeps searching and a tired ant keeps going home.
+    @Test
+    fun theSearchAndReturnModesHoldThroughHiddenHistory() {
+        fun after(start: Float): FloatArray {
+            val b = genome.brain()
+            val h = FloatArray(genome.hidden)
+            val s = FloatArray(genome.hidden)
+            val o = FloatArray(genome.outputs)
+            val first = inputs(Senses.RESERVES to start)
+            repeat(5) { b.evaluate(first, h, s, o) }
+            val then = inputs(Senses.RESERVES to 0.64f)
+            repeat(20) { b.evaluate(then, h, s, o) }
+            return h
+        }
+        val wasSearching = after(1f)
+        val wasTired = after(0.5f)
+        assertTrue(wasSearching[SeedBrain.U_SEARCH] > 0.9f && wasSearching[SeedBrain.U_HOME] < -0.9f, "from searching")
+        assertTrue(wasTired[SeedBrain.U_SEARCH] < -0.9f && wasTired[SeedBrain.U_HOME] > 0.9f, "from tired")
     }
 
     // Circuit 2: search.
@@ -74,6 +159,39 @@ class SeedBrainTest {
         assertTrue(abs(off) < 0.05f, "off trail $off")
         val on = turn(outputs(Senses.FOOT_L to 0.8f, Senses.FOOT_R to 0.2f, Senses.TRAIL_L to 0.5f, Senses.TRAIL_R to 0.5f))
         assertTrue(on < -1f, "on trail $on")
+        val strong = turn(outputs(Senses.FOOT_L to 0.8f, Senses.FOOT_R to 0.2f, Senses.TRAIL_L to 0.9f, Senses.TRAIL_R to 0.9f))
+        assertTrue(strong < 0.5f * on, "strong trail $strong, near the threshold $on")
+    }
+
+    // C1 and I1 of the Task 6 review: zero-mean noise must not make any ant circle.
+    @Test
+    fun theWalkHasNoTurningBiasInAnyModeOrForAnyAnt() {
+        val modes = mapOf("search" to emptyArray<Pair<Int, Float>>(), "home" to full, "carry" to carrying)
+        var worstSeed = 0.0
+        var worstPersonal = 0.0
+        for ((name, mode) in modes) for (trail in floatArrayOf(0f, 0.25f, 0.5f, 1f)) for (met in floatArrayOf(0f, 1f)) {
+            val set = arrayOf(*mode, Senses.TRAIL_L to trail / 2f, Senses.TRAIL_R to trail / 2f, Senses.MET_HONEYDEW to met)
+            val label = "$name, trail $trail, metHoneydew $met"
+            val seed = meanTurn(genome.brain(), 2_000, 3L, *set)
+            worstSeed = maxOf(worstSeed, abs(seed))
+            assertTrue(abs(seed) < 0.05, "seed brain, $label: mean turn $seed")
+            for (id in 0 until 50) {
+                val m = meanTurn(personal(id), 2_000, 100L + id, *set)
+                worstPersonal = maxOf(worstPersonal, abs(m))
+                assertTrue(abs(m) < 0.1, "ant $id, $label: mean turn $m")
+            }
+        }
+        println("worst mean turn: seed brain $worstSeed rad/s, personal $worstPersonal rad/s")
+    }
+
+    @Test
+    fun theOutboundWalkIsAsTortuousAsTheScriptedOneAndTheWayHomeStraighter() {
+        val out = diffusion()
+        val home = diffusion(*full)
+        val carry = diffusion(*carrying)
+        println("angular diffusion: outbound $out, homeward $home, carrying $carry rad^2/s")
+        assertTrue(out in 0.6..1.1, "outbound $out rad^2/s")
+        assertTrue(home < 0.3, "homeward $home rad^2/s")
     }
 
     @Test
@@ -103,8 +221,10 @@ class SeedBrainTest {
         val fresh = deposit(*full)
         assertTrue(fresh > 0.9f, "full $fresh")
         assertTrue(deposit(Senses.CROP to 0.6f, Senses.FED_RECENT to 1f) < Outputs.DEPOSIT_MIN)
-        assertTrue(deposit(*full, Senses.CONTACT_RATE to 0.67f) < fresh)
-        assertTrue(deposit(*full, Senses.TRAIL_L to 0.8f, Senses.TRAIL_R to 0.8f) < fresh)
+        val crowded = deposit(*full, Senses.CONTACT_RATE to 0.67f)
+        assertTrue(fresh - crowded in 0.1f..0.3f, "crowded $crowded, fresh $fresh")
+        val onTrail = deposit(*full, Senses.TRAIL_L to 0.8f, Senses.TRAIL_R to 0.8f)
+        assertTrue(fresh - onTrail in 0.2f..0.45f, "on a strong trail $onTrail, fresh $fresh")
     }
 
     @Test
@@ -130,7 +250,6 @@ class SeedBrainTest {
 
     @Test
     fun aPelletIsCarriedAwayAndDroppedClearOfTheEntrance() {
-        val carrying = arrayOf(Senses.DIGGER to 1f, Senses.CARRYING to 1f)
         val near = outputs(*carrying, Senses.HOME_DIST to 8f / 508f)
         val far = outputs(*carrying, Senses.HOME_DIST to 40f / 540f)
         assertTrue(logit(near, Action.DROP) - logit(near, Action.WALK) <= -5f)
@@ -153,5 +272,12 @@ class SeedBrainTest {
     @Test
     fun aNudgeTurnsTheSearchAwayFromADeadEnd() {
         assertTrue(turn(outputs(Senses.NUDGE to 0.8f)) < -1f)
+    }
+
+    private companion object {
+        const val WORLD_SEED = 20261002L
+
+        /** Seconds between two evaluations of a brain (the turn rate holds that long). */
+        const val EVAL_SECONDS = 0.1
     }
 }
