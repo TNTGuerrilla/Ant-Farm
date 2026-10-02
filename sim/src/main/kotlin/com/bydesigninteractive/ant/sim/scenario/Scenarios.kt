@@ -60,4 +60,36 @@ object Scenarios {
         repeat(foragers) { w.addAnt(Role.FORAGER) }
         return w
     }
+
+    /**
+     * Two honeydew feeders on gently rolling open ground (no rocks), as in [gruter]: feeder 0 at
+     * [distanceA] west of the entrance with [qualityA] and [loadsA] trips, feeder 1 at
+     * [distanceB] east with [qualityB], never running out. For the realism search's experiments (M2a).
+     */
+    fun feeders(
+        seed: Long,
+        foragers: Int,
+        distanceA: Float,
+        distanceB: Float,
+        qualityA: Float = 1f,
+        qualityB: Float = 1f,
+        loadsA: Int = Int.MAX_VALUE,
+        genome: Genome? = null,
+    ): World {
+        val w = World(seed, rocks = false, genome = genome)
+        w.predig(5)
+        val s = w.surface
+        val xa = s.entranceX - distanceA
+        val xb = s.entranceX + distanceB
+        s.addFood(FoodSource(
+            0, FoodKind.HONEYDEW, xa, s.entranceY, 15f, qualityA, loads = loadsA,
+            z = s.ground.height(xa, s.entranceY) + 3f, bodyRadius = 8f,
+        ))
+        s.addFood(FoodSource(
+            1, FoodKind.HONEYDEW, xb, s.entranceY, 15f, qualityB,
+            z = s.ground.height(xb, s.entranceY) + 3f, bodyRadius = 8f,
+        ))
+        repeat(foragers) { w.addAnt(Role.FORAGER) }
+        return w
+    }
 }

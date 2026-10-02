@@ -11,6 +11,17 @@ import java.util.concurrent.ExecutorService
 import kotlin.math.max
 import kotlin.math.roundToInt
 
+/** One experiment over several seeds: it passes when [Experiments.needed] of them reach [threshold]. */
+class ExperimentResult(val name: String, val values: List<Double>, val threshold: Double) {
+    val passed: Boolean get() = values.count { it >= threshold } >= Experiments.needed(values.size)
+
+    fun line(): String = String.format(
+        Locale.ROOT,
+        "%s %s: %s (%.2f or more in %d of %d)",
+        name, if (passed) "pass" else "FAIL", Experiments.fmt(values), threshold, Experiments.needed(values.size), values.size,
+    )
+}
+
 /**
  * Colony experiments on fresh worlds (M2a): the Gruter 2012 checks of GruterScenarioTest and,
  * from Task 9, four open-ground experiments. Runs are independent, so seeds run in parallel on
@@ -84,6 +95,76 @@ object Experiments {
         run(w, minutes(30, scale))
         val after = feedsSince(w, minutes(10, scale))
         return (after[loser] ?: 0).toDouble() / after.values.sum().coerceAtLeast(1)
+    }
+
+    // Pass thresholds of the open-ground experiments (spec 4.3).
+    const val DISTANCE_MIN = 0.7 // the near feeder's share of feeds: the colony settles on it
+    const val EQUAL_MIN = 0.7 // the busier of two equal feeders: one wins
+    const val QUALITY_MIN = 0.85 // the richer feeder's share: about 90% or more
+    const val DEPLETION_MIN = 0.5 // feeds at the second source after the first runs out, per feed before
+    const val DEPLETION_LOADS = 400
+
+    /** Distance choice, the open-ground double bridge: feeders at 250 and 500 mm; the near one's share of the last 10 minutes' feeds after 30. */
+    fun distanceChoice(genome: Genome?, seed: Long, scale: Float = 1f): Double {
+        val w = Scenarios.feeders(seed, 150, distanceA = 250f, distanceB = 500f, genome = genome)
+        run(w, minutes(30, scale))
+        val feeds = feedsSince(w, minutes(10, scale))
+        return (feeds[0] ?: 0).toDouble() / feeds.values.sum().coerceAtLeast(1)
+    }
+
+    /** Equal sources at 250 mm: the busier one's share of the last 10 minutes' feeds after 30. */
+    fun equalSources(genome: Genome?, seed: Long, scale: Float = 1f): Double {
+        val w = Scenarios.feeders(seed, 150, distanceA = 250f, distanceB = 250f, genome = genome)
+        run(w, minutes(30, scale))
+        val feeds = feedsSince(w, minutes(10, scale))
+        return (feeds.values.maxOrNull() ?: 0).toDouble() / feeds.values.sum().coerceAtLeast(1)
+    }
+
+    /** Source quality: 1.0 against 0.3 at 250 mm; the richer one's share of the last 10 minutes' feeds after 30. */
+    fun quality(genome: Genome?, seed: Long, scale: Float = 1f): Double {
+        val w = Scenarios.feeders(seed, 150, distanceA = 250f, distanceB = 250f, qualityA = 1f, qualityB = 0.3f, genome = genome)
+        run(w, minutes(30, scale))
+        val feeds = feedsSince(w, minutes(10, scale))
+        return (feeds[0] ?: 0).toDouble() / feeds.values.sum().coerceAtLeast(1)
+    }
+
+    /**
+     * Depletion switch: a rich feeder with [DEPLETION_LOADS] trips and a poorer one that never
+     * runs out, both at 250 mm. After the rich one is gone (within 60 minutes), feeds at the
+     * second in the next 10 minutes per feed at the first in the 10 minutes before; 0 if it never ran out.
+     */
+    fun depletion(genome: Genome?, seed: Long, scale: Float = 1f): Double {
+        val w = Scenarios.feeders(
+            seed, 150, distanceA = 250f, distanceB = 250f, qualityA = 1f, qualityB = 0.5f,
+            loadsA = DEPLETION_LOADS, genome = genome,
+        )
+        val window = minutes(10, scale) * TICKS_PER_MINUTE.toLong()
+        val limit = minutes(60, scale)
+        var gone = -1L
+        var m = 0
+        while ((gone < 0L && m < limit) || (gone >= 0L && w.tick < gone + window)) {
+            run(w, 1)
+            m++
+            if (gone < 0L && w.surface.foods.none { it.id == 0 }) gone = w.tick
+        }
+        if (gone < 0L) return 0.0
+        val before = w.feedEvents.count { it.foodId == 0 && it.tick >= gone - window && it.tick < gone }
+        val after = w.feedEvents.count { it.foodId == 1 && it.tick >= gone && it.tick < gone + window }
+        return if (before == 0) 0.0 else after.toDouble() / before
+    }
+
+    /** The four open-ground experiments on every seed, in parallel. */
+    fun all(genome: Genome?, seeds: List<Long>, pool: ExecutorService, scale: Float = 1f): List<ExperimentResult> {
+        val names = listOf("distance choice", "equal sources", "source quality", "depletion switch")
+        val thresholds = listOf(DISTANCE_MIN, EQUAL_MIN, QUALITY_MIN, DEPLETION_MIN)
+        val runs = listOf<(Long) -> Double>(
+            { s -> distanceChoice(genome, s, scale) },
+            { s -> equalSources(genome, s, scale) },
+            { s -> quality(genome, s, scale) },
+            { s -> depletion(genome, s, scale) },
+        )
+        val futures = runs.map { f -> seeds.map { s -> pool.submit(Callable { f(s) }) } }
+        return names.indices.map { i -> ExperimentResult(names[i], futures[i].map { it.get() }, thresholds[i]) }
     }
 
     internal fun minutes(m: Int, scale: Float): Int = max(1, (m * scale).roundToInt())
