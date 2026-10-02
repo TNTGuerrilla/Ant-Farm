@@ -81,7 +81,7 @@ class Ant(val id: Int, val role: Role, val desiredCrop: Float, val laysTrail: Bo
     /** Trail marks this ant has laid. */
     var marksLaid = 0
 
-    // M2a brain state, read by Senses and written by Body and Contacts (unused by the scripted ants).
+    // Brain state (M2a), read by Senses and written by Body and Contacts.
     /** Energy reserves, 0 to 1: fall outside, refill in the nest and on feeding ([Body]). */
     var reserves = 1f
 
@@ -110,7 +110,7 @@ class Ant(val id: Int, val role: Role, val desiredCrop: Float, val laysTrail: Bo
     var deposit = 0f
     var goOut = 0f
 
-    /** This ant's network (its colony's genome with its personal variation) and its hidden state; null for scripted ants. */
+    /** This ant's network (its colony's genome with its personal variation) and its hidden state; null only for ants made outside World.addAnt. */
     var brain: Brain? = null
     var hidden = FloatArray(0)
 }

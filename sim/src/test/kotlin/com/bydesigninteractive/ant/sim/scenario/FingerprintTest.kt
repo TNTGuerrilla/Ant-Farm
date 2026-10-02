@@ -47,12 +47,10 @@ class FingerprintTest {
         assertEquals(DETOUR, fingerprint(w))
     }
 
-    // DETOUR added in M2a Task 2 (spec 5.4); STARTER and COLONY were unchanged by the separate detour run (spec 5.3).
-    // Re-recorded in M1b-2c for shorter stems (aphid plants 25 to 60 cm). The large colony run
-    // came out unchanged, so its value stays.
+    // Re-recorded in M2a Task 8: every ant runs the instinct brain.
     private companion object {
-        const val STARTER = "sum=592021.2330610721 trail=11 home=85 trailMax=2.6022065 homeMax=0.8222595 feeds=3 unloads=0 ants=80 rng=-6541635496726510995"
-        const val DETOUR = "sum=493886.53250150196 trail=32 home=104 trailMax=3.6517022 homeMax=0.60785055 feeds=12 unloads=0 ants=80 rng=-1674734592234830375"
-        const val COLONY = "sum=7229040.3433115 trail=0 home=34 trailMax=0.0 homeMax=2.4585316 feeds=0 unloads=0 ants=1000 rng=-6800254765937369305"
+        const val STARTER = "sum=547889.6989145946 trail=4 home=77 trailMax=4.4868712 homeMax=0.8155839 feeds=2 unloads=0 ants=80 rng=36691888687298254"
+        const val DETOUR = "sum=552394.0885981531 trail=12 home=74 trailMax=3.6309822 homeMax=0.63593847 feeds=9 unloads=0 ants=80 rng=4980140498390456359"
+        const val COLONY = "sum=7185262.319803611 trail=0 home=30 trailMax=0.0 homeMax=2.7777545 feeds=0 unloads=0 ants=1000 rng=-7510369823861576677"
     }
 }

@@ -120,19 +120,4 @@ class SurfaceRunTest {
         println("BENCHMARK colony1000: %.2f ms per tick; %s".format(java.util.Locale.ROOT, msPerTick, profile.summary()))
         assertTrue(msPerTick < 50.0, "$msPerTick ms per tick")
     }
-
-    /** The 1,000-ant colony with brains (M2a), after 5 simulated minutes; the TV must hold it at 25 ms per tick. */
-    @Test
-    fun benchmarkTheLargeColonyWithBrains() {
-        val w = Scenarios.colony1000(3, brains = true)
-        repeat(20 * 60 * 5) { w.step() }
-        val profile = TickProfile()
-        w.profile = profile
-        val ticks = 20 * 60
-        val start = System.nanoTime()
-        repeat(ticks) { w.step() }
-        val msPerTick = (System.nanoTime() - start) / 1e6 / ticks
-        println("BENCHMARK colony1000 brains: %.2f ms per tick; %s".format(java.util.Locale.ROOT, msPerTick, profile.summary()))
-        assertTrue(msPerTick < 50.0, "$msPerTick ms per tick")
-    }
 }

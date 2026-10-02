@@ -132,13 +132,6 @@ internal object SurfaceWalk {
         a.senseR = sample(w, a, field, w.senseCos[1], w.senseSin[1])
     }
 
-    /** Turns toward the stronger side in proportion to (L - R) / (L + R) (section 4). */
-    fun steerByGradient(w: World, a: Ant, gain: Float) {
-        val s = a.senseL + a.senseR
-        if (s <= 0f) return
-        turn(a, gain * (a.senseL - a.senseR) / s * DT)
-    }
-
     /** The horizontal part of the forward vector dotted with (vx, vy). */
     fun horizontalDot(a: Ant, vx: Float, vy: Float): Float = a.fx * vx + a.fy * vy
 

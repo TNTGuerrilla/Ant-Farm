@@ -2,8 +2,6 @@ package com.bydesigninteractive.ant.sim
 
 import com.bydesigninteractive.ant.sim.ant.Ant
 import com.bydesigninteractive.ant.sim.ant.BrainAnt
-import com.bydesigninteractive.ant.sim.ant.Digger
-import com.bydesigninteractive.ant.sim.ant.Forager
 import com.bydesigninteractive.ant.sim.ant.AntParams
 import com.bydesigninteractive.ant.sim.ant.AntState
 import com.bydesigninteractive.ant.sim.ant.Role
@@ -38,8 +36,8 @@ data class FeedEvent(val tick: Long, val foodId: Int)
 
 /**
  * The whole simulation: the surface map, the nest slice, and the ants moving between them
- * through the entrance. Fully determined by [seed]; [step] advances it by one tick. With
- * [AntParams.brains], every ant runs a personal copy of [genome] (the instinct brain unless given).
+ * through the entrance. Fully determined by [seed]; [step] advances it by one tick. Every ant
+ * runs a personal copy of [genome] (the instinct brain unless given).
  */
 class World(
     val seed: Long,
@@ -115,11 +113,9 @@ class World(
         a.bornTick = tick
         placeAtEntrance(a)
         a.state = if (role == Role.FORAGER) AntState.EXIT else AntState.IDLE
-        if (params.brains) {
-            a.brain = genome.personal(seed, a.id, biasFrom = Outputs.DEPOSIT)
-            a.hidden = FloatArray(genome.hidden)
-            a.action = if (role == Role.FORAGER) Action.LEAVE else Action.REST
-        }
+        a.brain = genome.personal(seed, a.id, biasFrom = Outputs.DEPOSIT)
+        a.hidden = FloatArray(genome.hidden)
+        a.action = if (role == Role.FORAGER) Action.LEAVE else Action.REST
         ants += a
         return a
     }
@@ -212,16 +208,7 @@ class World(
         p.phaseNanos[phase] += System.nanoTime() - t0
     }
 
-    private fun behave(a: Ant) {
-        if (params.brains) {
-            BrainAnt.update(this, a)
-            return
-        }
-        when (a.role) {
-            Role.FORAGER -> Forager.update(this, a)
-            Role.DIGGER -> Digger.update(this, a)
-        }
-    }
+    private fun behave(a: Ant) = BrainAnt.update(this, a)
 
     private fun placeAtEntrance(a: Ant) {
         a.cellX = nestEntranceX
