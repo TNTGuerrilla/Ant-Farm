@@ -10,6 +10,7 @@ class DistanceMap(private val grid: NestGrid) {
     private var touched = IntArray(1024)
     private var touchedCount = 0
     private var queue = IntArray(1024)
+    private var farthestCell = -1
 
     fun get(x: Int, y: Int): Int = if (grid.inBounds(x, y)) dist[y * w + x] else UNREACHED
 
@@ -44,7 +45,12 @@ class DistanceMap(private val grid: NestGrid) {
                 queue[tail++] = n
             }
         }
+        // Breadth-first order never decreases in distance, so the last cell queued is a farthest one.
+        farthestCell = if (tail > 0) queue[tail - 1] else -1
     }
+
+    /** A cell (packed as y * width + x) with the largest distance after the last rebuild, or -1 if nothing was reached. */
+    fun farthest(): Int = farthestCell
 
     private fun touch(i: Int) {
         touched = ensure(touched, touchedCount + 1)

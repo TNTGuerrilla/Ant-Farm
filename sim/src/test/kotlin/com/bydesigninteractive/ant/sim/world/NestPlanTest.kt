@@ -2,6 +2,7 @@ package com.bydesigninteractive.ant.sim.world
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class NestPlanTest {
@@ -29,5 +30,16 @@ class NestPlanTest {
         assertEquals(40, a.y0)
         assertEquals(a.y1 + 1, b.y0)
         assertTrue(b.y1 - b.y0 > a.y1 - a.y0)
+    }
+
+    @Test
+    fun oddBlocksAreChambersBesideTheShaft() {
+        val plan = NestPlan(1, 600)
+        assertFalse(plan.isChamber(0))
+        assertTrue(plan.isChamber(1))
+        assertFalse(plan.isChamber(2))
+        val shaft = plan.rect(0)
+        val chamber = plan.rect(1)
+        assertTrue(chamber.x0 > shaft.x1 || chamber.x1 < shaft.x0, "chamber $chamber overlaps the shaft $shaft")
     }
 }

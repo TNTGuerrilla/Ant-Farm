@@ -23,6 +23,9 @@ class NestPlan(private val seed: Long, private val entranceX: Int) {
         return rects[i]
     }
 
+    /** True for the chambers: blocks alternate shaft, chamber, shaft, chamber, so odd indices are chambers. */
+    fun isChamber(i: Int): Boolean = i % 2 == 1
+
     private fun extend() {
         if (rects.isEmpty()) {
             rects += shaft(FIRST_SHAFT)

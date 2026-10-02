@@ -2,6 +2,7 @@ package com.bydesigninteractive.ant.sim.world
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class NestPathsTest {
     private val grid = NestGrid(NestGenerator(3, 256, 256))
@@ -38,5 +39,23 @@ class NestPathsTest {
         // The shaft block (x 126..130, y 0..39) is the current block; its frontier touches the carved column.
         assertEquals(0, paths.toFront.get(128, 20))
         assertEquals(DistanceMap.UNREACHED, paths.toFront.get(50, 50))
+    }
+
+    @Test
+    fun beforeAnyChamberTheRestSpotIsTheFarthestCell() {
+        carveL()
+        paths.refresh()
+        assertEquals(0, paths.toRest.get(140, 20))
+        assertEquals(32, paths.toRest.get(128, 0))
+    }
+
+    @Test
+    fun aDugChamberIsTheRestSpot() {
+        val w = com.bydesigninteractive.ant.sim.World(1)
+        w.predig(2) // the first shaft and the first chamber
+        w.paths.refresh()
+        val chamber = w.plan.rect(1)
+        assertEquals(0, w.paths.toRest.get(chamber.x0, chamber.y0))
+        assertTrue(w.paths.toRest.get(w.nestEntranceX, 0) > 0)
     }
 }

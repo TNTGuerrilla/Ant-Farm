@@ -71,4 +71,14 @@ internal object NestMotion {
         if (d == DistanceMap.UNREACHED || d >= steps) return false
         return stepTo(w, a, w.paths.up, d + 1)
     }
+
+    /**
+     * Walks toward the nearest rest spot ([com.bydesigninteractive.ant.sim.world.NestPaths.toRest])
+     * and stands once there. Call it when [move] returned true.
+     */
+    fun goRest(w: World, a: Ant) {
+        val rest = w.paths.toRest
+        val d = rest.get(a.cellX, a.cellY)
+        if (d != DistanceMap.UNREACHED && d > 0) stepTo(w, a, rest, d - 1)
+    }
 }

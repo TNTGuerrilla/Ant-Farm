@@ -8,7 +8,7 @@ data class Cell(val x: Int, val y: Int)
  * next to them. A block is done when nothing diggable is left in it, or when what is left
  * cannot be reached.
  */
-class Excavation(private val grid: NestGrid, private val plan: NestPlan) {
+class Excavation(private val grid: NestGrid, val plan: NestPlan) {
     var block = 0
         private set
 

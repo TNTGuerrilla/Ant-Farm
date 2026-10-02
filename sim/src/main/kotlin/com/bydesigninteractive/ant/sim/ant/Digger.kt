@@ -10,7 +10,7 @@ import kotlin.math.sqrt
 
 /**
  * The scripted digger: when the colony needs room it walks to the frontier, digs one cell into
- * a pellet, carries it out and drops it on the spoil pile, then comes back. Drops and pick-ups
+ * a pellet, carries it out and drops it on the spoil pile, then comes back; with nothing to dig it waits in a chamber. Drops and pick-ups
  * on the pile follow the Khuong 2016 rates (section 10).
  */
 internal object Digger {
@@ -31,7 +31,12 @@ internal object Digger {
 
     private fun idle(w: World, a: Ant) {
         if (!NestMotion.move(w, a)) return
-        if (w.digNeeded() && w.excavation.frontier().isNotEmpty()) a.state = AntState.GO_DIG
+        if (w.digNeeded() && w.excavation.frontier().isNotEmpty()) {
+            a.state = AntState.GO_DIG
+            return
+        }
+        // Nothing to dig: wait in a chamber, not wherever the ant happens to stand (M2a Task 1).
+        NestMotion.goRest(w, a)
     }
 
     private fun goDig(w: World, a: Ant) {
