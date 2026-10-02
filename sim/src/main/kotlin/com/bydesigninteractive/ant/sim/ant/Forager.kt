@@ -90,7 +90,7 @@ internal object Forager {
                 keepOutward(a)
             }
         }
-        if (!a.onTrail) {
+        if (!a.onTrail && !Detour.walking(w, a)) {
             a.runLeft -= p.surfaceSpeed * DT
             if (a.runLeft <= 0f) {
                 // A decision point: join the trail here with a chance that rises steeply with its strength.

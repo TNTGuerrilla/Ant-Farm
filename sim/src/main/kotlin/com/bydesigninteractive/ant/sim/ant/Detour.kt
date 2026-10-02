@@ -18,6 +18,9 @@ import kotlin.math.pow
  * changes, when tracking restarts, or when the ant gets `detourResetMm` closer than it was at
  * the first stall.
  *
+ * A detour walks its own run ([Ant.detourLeft]) and never touches the search or homing run
+ * ([Ant.runLeft]), so its leftover can never become a home-vector run (M2a, spec 5.3).
+ *
  * Used where an ant re-aims at its target every tick: a forager heading for a plant, and a
  * forager or digger heading for the entrance in sight. Homing by the path integration vector
  * re-aims only once per run, so it cannot be parked this way, and a stall detector there fired
@@ -53,7 +56,6 @@ internal object Detour {
             a.detourLeft = 0f
             a.detourMark = dist
             a.detourTimer = 0f
-            a.runLeft = 0f
             return false
         }
         if (dist <= a.detourMark - p.detourProgressMm) {
@@ -73,8 +75,11 @@ internal object Detour {
         val mean = min(p.detourRunCapMm, p.detourRunMm * p.detourRunGrowth.pow(a.detourCount))
         a.detourCount++
         a.detourLeft = w.exponential(mean)
-        a.runLeft = a.detourLeft
         a.detourTimer = 0f
+        w.detoursStarted++
         return true
     }
+
+    /** True while [a] is walking a detour that [detouring] gave it this tick. */
+    fun walking(w: World, a: Ant): Boolean = a.detourLeft > 0f && a.detourTick == w.tick
 }

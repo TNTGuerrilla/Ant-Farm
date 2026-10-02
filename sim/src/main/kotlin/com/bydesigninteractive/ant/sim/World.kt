@@ -69,6 +69,9 @@ class World(
     /** Foragers that have brought food home and unloaded it. */
     var unloads = 0
 
+    /** Obstacle detours started so far, by all ants (for tests and the detour golden). */
+    var detoursStarted = 0
+
     var tick = 0L
         private set
     val seconds: Float get() = tick * DT
