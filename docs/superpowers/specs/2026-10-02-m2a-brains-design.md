@@ -89,7 +89,7 @@ The full check (best 5): the Gruter test on 8 seeds, and four experiments on ope
 
 ### 4.4 Compute
 
-CPU only, on the performance cores: a small Windows launcher script starts the search's JVM with its processor affinity set to the P-core threads (on the owner's i9-12900K, logical processors 0 to 15) and below-normal priority; the search uses 14 worker threads, leaving one P-core and all E-cores free so the PC stays responsive. The whole search (screening and full check) fits in under an hour. The GPU is not used: the search must run the exact simulation the TV runs, and a GPU copy would be a second simulator that drifts from it; the brain arithmetic alone is too small a share of a trial to gain from offloading.
+CPU only, on the performance cores: a small Windows launcher script starts the search's JVM with its processor affinity set to the P-core threads, detected from Windows' CPU set information (the highest efficiency class; on the owner's i9-12900K, logical processors 0 to 15), and below-normal priority; the search uses 14 worker threads, leaving one P-core and all E-cores free so the PC stays responsive. The whole search (screening and full check) fits in under an hour. The GPU is not used: the search must run the exact simulation the TV runs, and a GPU copy would be a second simulator that drifts from it; the brain arithmetic alone is too small a share of a trial to gain from offloading.
 
 ### 4.5 Output
 
