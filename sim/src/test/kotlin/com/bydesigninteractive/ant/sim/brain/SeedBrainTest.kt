@@ -1,0 +1,157 @@
+package com.bydesigninteractive.ant.sim.brain
+
+import kotlin.math.abs
+import kotlin.math.exp
+import kotlin.math.tanh
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+/** One test per circuit of spec section 3 (and the M2a plan, Task 6): inputs in, steering and choices out. */
+class SeedBrainTest {
+    private val genome = SeedBrain.genome()
+
+    /** Runs the seed brain (no personal variation) three times on the same inputs so the modes settle; RESERVES 1 and BIAS 1 unless set. */
+    private fun outputs(vararg set: Pair<Int, Float>): FloatArray {
+        val b = genome.brain()
+        val x = FloatArray(Senses.COUNT)
+        x[Senses.BIAS] = 1f
+        x[Senses.RESERVES] = 1f
+        for ((i, v) in set) x[i] = v
+        val h = FloatArray(genome.hidden)
+        val s = FloatArray(genome.hidden)
+        val o = FloatArray(genome.outputs)
+        repeat(3) { b.evaluate(x, h, s, o) }
+        return o
+    }
+
+    private fun turn(o: FloatArray) = Outputs.MAX_TURN_RATE * tanh(o[Outputs.TURN])
+    private fun logit(o: FloatArray, a: Action) = o[Outputs.ACTION + a.ordinal]
+    private fun sig(v: Float) = 1f / (1f + exp(-v))
+    private fun goOut(vararg set: Pair<Int, Float>) = sig(outputs(Senses.IN_NEST to 1f, *set)[Outputs.GO_OUT])
+    private fun deposit(vararg set: Pair<Int, Float>) = sig(outputs(*set)[Outputs.DEPOSIT])
+
+    /** Turn rate with the noise input at +1 minus at -1, other inputs as given. */
+    private fun noiseSpread(vararg set: Pair<Int, Float>) =
+        turn(outputs(Senses.NOISE to 1f, *set)) - turn(outputs(Senses.NOISE to -1f, *set))
+
+    private val full = arrayOf(Senses.CROP to 1f, Senses.FULL to 1f, Senses.FED_RECENT to 1f)
+
+    @Test
+    fun theGenomeFitsTheLayout() {
+        assertEquals(Senses.COUNT, genome.inputs)
+        assertEquals(SeedBrain.HIDDEN, genome.hidden)
+        assertEquals(Outputs.COUNT, genome.outputs)
+        assertEquals(Senses.LAYOUT, genome.layout)
+    }
+
+    // Circuit 1: go out.
+    @Test
+    fun theGoOutDriveRisesWithReturnersAndFallsWhenTired() {
+        val base = goOut()
+        assertTrue(base in 0.2f..0.4f, "baseline $base")
+        assertTrue(goOut(Senses.RETURNERS to 0.5f) > 0.9f)
+        assertTrue(goOut(Senses.RESERVES to 0.8f) < 0.1f)
+    }
+
+    // Circuit 2: search.
+    @Test
+    fun theSearchTurnsTowardTheStrongerTrail() {
+        assertTrue(turn(outputs(Senses.TRAIL_L to 0.6f, Senses.TRAIL_R to 0.4f)) > 0.5f)
+        assertTrue(turn(outputs(Senses.TRAIL_L to 0.4f, Senses.TRAIL_R to 0.6f)) < -0.5f)
+    }
+
+    @Test
+    fun noiseDrivesTheOutboundWalkOnlyOffTheTrail() {
+        assertTrue(noiseSpread() > 3f, "off trail ${noiseSpread()}")
+        val onTrail = noiseSpread(Senses.TRAIL_L to 0.6f, Senses.TRAIL_R to 0.6f)
+        assertTrue(abs(onTrail) < 0.1f, "on trail $onTrail")
+    }
+
+    @Test
+    fun footprintsRepelOnlyWhereThereIsATrail() {
+        val off = turn(outputs(Senses.FOOT_L to 0.8f, Senses.FOOT_R to 0.2f))
+        assertTrue(abs(off) < 0.05f, "off trail $off")
+        val on = turn(outputs(Senses.FOOT_L to 0.8f, Senses.FOOT_R to 0.2f, Senses.TRAIL_L to 0.5f, Senses.TRAIL_R to 0.5f))
+        assertTrue(on < -1f, "on trail $on")
+    }
+
+    @Test
+    fun foodOdourDrawsTheSearch() {
+        assertTrue(turn(outputs(Senses.HONEYDEW to 0.5f, Senses.HONEYDEW_SIN to 0.5f)) > 1f)
+        assertTrue(turn(outputs(Senses.PREY to 0.5f, Senses.PREY_SIN to -0.5f)) < -1f)
+    }
+
+    // Circuit 3: feed.
+    @Test
+    fun atFoodFeedingWins() {
+        val o = outputs(Senses.AT_FOOD to 1f)
+        assertTrue(logit(o, Action.FEED) - logit(o, Action.WALK) >= 5f)
+    }
+
+    // Circuit 4: return.
+    @Test
+    fun aFullForagerSteersHomeStraighterThanItSearched() {
+        assertTrue(turn(outputs(*full, Senses.HOME_SIN to 0.5f, Senses.HOME_COS to 0.87f)) > 1f)
+        val home = noiseSpread(*full)
+        val out = noiseSpread()
+        assertTrue(home > 0f && home < 0.3f * out, "noise spread home $home, out $out")
+    }
+
+    @Test
+    fun onlyAFullForagerLaysTrailAndLessWhenCrowdedOrOnAStrongTrail() {
+        val fresh = deposit(*full)
+        assertTrue(fresh > 0.9f, "full $fresh")
+        assertTrue(deposit(Senses.CROP to 0.6f, Senses.FED_RECENT to 1f) < Outputs.DEPOSIT_MIN)
+        assertTrue(deposit(*full, Senses.CONTACT_RATE to 0.67f) < fresh)
+        assertTrue(deposit(*full, Senses.TRAIL_L to 0.8f, Senses.TRAIL_R to 0.8f) < fresh)
+    }
+
+    @Test
+    fun aHomewardAntEntersAndASearcherDoesNot() {
+        assertTrue(logit(outputs(*full), Action.ENTER) >= 5f)
+        assertTrue(logit(outputs(), Action.ENTER) <= -5f)
+    }
+
+    // Circuit 5: unload and rest.
+    @Test
+    fun inTheNestAFullCropIsUnloaded() {
+        val o = outputs(Senses.IN_NEST to 1f, Senses.CROP to 1f, Senses.FULL to 1f)
+        assertTrue(logit(o, Action.UNLOAD) - logit(o, Action.WALK) >= 5f)
+        assertTrue(logit(o, Action.REST) <= -9f)
+    }
+
+    // Circuit 6: dig.
+    @Test
+    fun aDiggerDigsWhereThereIsASite() {
+        val o = outputs(Senses.IN_NEST to 1f, Senses.DIGGER to 1f, Senses.DIG_SITE to 1f, Senses.ROOM_NEEDED to 1f)
+        assertTrue(logit(o, Action.DIG) - logit(o, Action.WALK) >= 3f)
+    }
+
+    @Test
+    fun aPelletIsCarriedAwayAndDroppedClearOfTheEntrance() {
+        val carrying = arrayOf(Senses.DIGGER to 1f, Senses.CARRYING to 1f)
+        val near = outputs(*carrying, Senses.HOME_DIST to 8f / 508f)
+        val far = outputs(*carrying, Senses.HOME_DIST to 40f / 540f)
+        assertTrue(logit(near, Action.DROP) - logit(near, Action.WALK) <= -5f)
+        assertTrue(logit(far, Action.DROP) - logit(far, Action.WALK) >= 3f)
+        assertTrue(turn(outputs(*carrying, Senses.HOME_SIN to 0.5f, Senses.HOME_COS to 0.87f)) < -1f)
+    }
+
+    // Circuit 7: contacts.
+    @Test
+    fun meetingASuccessfulForagerRaisesTheGoOutDrive() {
+        assertTrue(goOut(Senses.MET_SUCCESS to 1f) > goOut() + 0.5f)
+    }
+
+    @Test
+    fun aReceivedOdourSteadiesTheSearch() {
+        assertTrue(noiseSpread(Senses.MET_HONEYDEW to 1f) < 0.5f * noiseSpread())
+        assertTrue(noiseSpread(Senses.MET_PREY to 1f) < 0.5f * noiseSpread())
+    }
+
+    @Test
+    fun aNudgeTurnsTheSearchAwayFromADeadEnd() {
+        assertTrue(turn(outputs(Senses.NUDGE to 0.8f)) < -1f)
+    }
+}
