@@ -34,7 +34,7 @@ object Trial {
         }
         if (!yChoice) return TrialResult(seed, observer.measurements(), Death.NONE, minutes)
         val y = YChoice.run(genome, seed)
-        val m = observer.measurements().copy(naiveFollowing = y.share, naiveChoices = y.choices.toDouble())
+        val m = observer.measurements().copy(naiveFollowing = y.share, naiveChoices = y.choices.toDouble(), naiveStrayShare = y.strayShare)
         return TrialResult(seed, m, Death.NONE, minutes, y)
     }
 }

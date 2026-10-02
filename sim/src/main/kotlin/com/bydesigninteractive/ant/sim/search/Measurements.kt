@@ -6,12 +6,14 @@ package com.bydesigninteractive.ant.sim.search
  * says how each is computed.
  *
  * [meanAbsTurnBias] (rad/s) is the drift measure added after the Task 6 review: the size of a
- * searching forager's own mean signed turn rate over 30 s windows. A searcher that keeps turning
+ * searching forager's own mean signed turn rate over all its searching (120 s or more, [Observer]),
+ * averaged over foragers. A searcher that keeps turning
  * one way walks in circles, and circling would otherwise pass as a tortuous, realistic search in
  * [straightOut]; a real searcher's turns to either side about balance out.
  *
  * [naiveFollowing] comes from the Y-choice trial ([YChoice]), not from the observed run: the
- * share of never-fed foragers that took the marked branch, over [naiveChoices] choices.
+ * share of never-fed foragers that took the marked branch, over [naiveChoices] choices, and
+ * [naiveStrayShare] is the share of releases that made no choice (strayed or timed out).
  * [foragerShare] is measured and reported but not scored in M2a ([Litmus]).
  */
 data class Measurements(
@@ -27,6 +29,7 @@ data class Measurements(
     val foragerShare: Double? = null,
     val meanAbsTurnBias: Double? = null,
     val naiveChoices: Double? = null,
+    val naiveStrayShare: Double? = null,
 ) {
     /** Every measurement with its name, in report order. */
     fun values(): List<Pair<String, Double?>> = listOf(
@@ -42,6 +45,7 @@ data class Measurements(
         "foragerShare" to foragerShare,
         "meanAbsTurnBias" to meanAbsTurnBias,
         "naiveChoices" to naiveChoices,
+        "naiveStrayShare" to naiveStrayShare,
     )
 
     companion object {
@@ -73,6 +77,7 @@ data class Measurements(
                 avg { it.straightOut }, avg { it.straightHome },
                 avg { it.foragerShare }, avg { it.meanAbsTurnBias },
                 if (counted) choices else null,
+                avg { it.naiveStrayShare },
             )
         }
     }

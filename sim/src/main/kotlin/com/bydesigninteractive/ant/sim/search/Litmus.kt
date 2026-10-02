@@ -11,15 +11,24 @@ import kotlin.math.max
  * lists them.
  *
  * The drift target ([TURN_BIAS_MAX]) is not from the field data: it keeps a searcher that turns
- * steadily one way (walking in circles) from scoring as a tortuous, realistic search. 0.15 rad/s
- * is a full circle in about 40 s. A balanced random search measures about 0.07 rad/s over the
- * 120 s or more of searching each forager needs to count ([Observer]).
+ * steadily one way (walking in circles) from scoring as a tortuous, realistic search. The seed
+ * brain, whose turns balance out, measures 0.022 to 0.031 rad/s over the 120 s or more of
+ * searching each forager needs to count ([Observer]); the limit of 0.07 rad/s (a full circle in
+ * 90 s) sits just above that floor, with a tolerance of 0.05, so a steady turn of 0.14 rad/s
+ * (a loop every 45 s) costs about 1.4 and the seed with +0.1 on its TURN output bias (0.165)
+ * about 1.9.
  *
  * Naive following ([NAIVE_FOLLOWING]) is the share of never-fed foragers that take the marked
  * branch at a Y ([YChoice]), Gruter 2011's 62 to 70%. Its tolerance is 0.06, not the 0.04 that
  * half the field range would give: the screening pools about 300 choices (100 releases on each
  * of 3 seeds), whose binomial standard error at 0.66 is about 0.027, so 0.06 is about two
- * standard errors and a variant is not ranked on sampling noise. Fewer choices would need 0.08.
+ * standard errors and a variant is not ranked on sampling noise. Fewer than [NAIVE_MIN_CHOICES]
+ * pooled choices score [NAIVE_MISSING], more than any reachable value of the share's part (at
+ * most 0.66 / 0.06 = 11 only at a share of 0, so a variant cannot gain by choosing rarely: a
+ * handful of lucky choices is not a measurement). The ants that make no choice score on their
+ * own ([NAIVE_STRAYS_MAX]): Gruter's Y-maze arms left no way off the bridge, so on open ground an
+ * ant that leaves the trail, turns back or is still undecided at the timeout failed to follow.
+ * Timeouts count as strays.
  *
  * The forager share ([FORAGER_SHARE]) is unscored in M2a: worker roles are fixed until M3
  * (castes), so the 10 to 25% target (Planckaert 2019) is a caste ratio the brain cannot change;
@@ -44,12 +53,16 @@ object Litmus {
     const val NEVER_LAYING_TOLERANCE = 0.07
     const val NAIVE_FOLLOWING = 0.66 // 62 to 70%
     const val NAIVE_FOLLOWING_TOLERANCE = 0.06
+    const val NAIVE_MIN_CHOICES = 100.0 // pooled over the seeds
+    const val NAIVE_MISSING = 12.0 // above the share part's largest value, 11
+    const val NAIVE_STRAYS_MAX = 0.2 // releases that strayed or timed out
+    const val NAIVE_STRAYS_TOLERANCE = 0.1
     const val STRAIGHTER_HOME_MIN = 0.1 // the search out is more tortuous than the way home
     const val STRAIGHTER_HOME_TOLERANCE = 0.1
     const val FORAGER_SHARE = 0.175 // 10 to 25% of workers; unscored until M3, see above
     const val FORAGER_SHARE_TOLERANCE = 0.075
-    const val TURN_BIAS_MAX = 0.15 // rad/s: searchers do not walk in circles
-    const val TURN_BIAS_TOLERANCE = 0.1
+    const val TURN_BIAS_MAX = 0.07 // rad/s: searchers do not walk in circles
+    const val TURN_BIAS_TOLERANCE = 0.05
 
     fun parts(m: Measurements): List<Pair<String, Double>> {
         val out = m.straightOut
@@ -62,13 +75,22 @@ object Litmus {
             "marks" to near(m.marksPer5cm, MARKS_PER_5CM, MARKS_TOLERANCE),
             "nearFood" to atLeast(m.nearFoodRatio, NEAR_FOOD_MIN, NEAR_FOOD_TOLERANCE),
             "neverLaying" to near(m.neverLaying, NEVER_LAYING, NEVER_LAYING_TOLERANCE),
-            "naiveFollowing" to near(m.naiveFollowing, NAIVE_FOLLOWING, NAIVE_FOLLOWING_TOLERANCE),
+            "naiveFollowing" to naive(m),
+            "naiveStrays" to atMost(m.naiveStrayShare, NAIVE_STRAYS_MAX, NAIVE_STRAYS_TOLERANCE),
             "straighterHome" to atLeast(gap, STRAIGHTER_HOME_MIN, STRAIGHTER_HOME_TOLERANCE),
             "turnBias" to atMost(m.meanAbsTurnBias, TURN_BIAS_MAX, TURN_BIAS_TOLERANCE),
         )
     }
 
     fun score(m: Measurements): Double = parts(m).sumOf { it.second }
+
+    /** The marked branch's share, scored only over [NAIVE_MIN_CHOICES] or more choices (else [NAIVE_MISSING]). */
+    private fun naive(m: Measurements): Double {
+        val choices = m.naiveChoices
+        val share = m.naiveFollowing
+        if (choices == null || !(choices >= NAIVE_MIN_CHOICES) || share == null || !share.isFinite()) return NAIVE_MISSING
+        return near(share, NAIVE_FOLLOWING, NAIVE_FOLLOWING_TOLERANCE)
+    }
 
     fun near(v: Double?, target: Double, tolerance: Double): Double =
         if (v == null || !v.isFinite()) MISSING else abs(v - target) / tolerance

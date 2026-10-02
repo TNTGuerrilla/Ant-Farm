@@ -60,7 +60,8 @@ class TrialTest {
      * The near-food ratio weighs marks by the amount the brain lays. A deposit that falls steeply
      * with time since feeding (the seed's cut unit reading FED_RECENT at -6, its threshold moved so
      * a fresh forager deposits as the seed's does) lays more per mm near the food than 20 to 40 s
-     * on; counting marks alone gave about 1 whatever the deposit.
+     * on; counting marks alone gave about 1 whatever the deposit. The control has no cut by time
+     * since feeding (FED_RECENT at 0, the threshold at the seed's fresh level) and stays near 1.
      */
     @Test
     fun aDepositThatFallsWithTimeSinceFeedingIsMoreNearTheFood() {
@@ -68,9 +69,13 @@ class TrialTest {
             Triple(SeedBrain.U_CUT, Senses.FED_RECENT, -6f),
             Triple(SeedBrain.U_CUT, Senses.BIAS, 4.5f),
         )
-        val r = Trial.screen(falling, seed = 1, minutes = 12, viabilityMinute = 10, yChoice = false)
-        val ratio = assertNotNull(r.measurements.nearFoodRatio)
-        assertTrue(ratio > NEAR_FOOD_FALLING, "near-food ratio $ratio")
+        val flat = seedWithInput(
+            Triple(SeedBrain.U_CUT, Senses.FED_RECENT, 0f),
+            Triple(SeedBrain.U_CUT, Senses.BIAS, -1.5f),
+        )
+        val f = assertNotNull(Trial.screen(falling, seed = 1, minutes = 12, viabilityMinute = 10, yChoice = false).measurements.nearFoodRatio)
+        val c = assertNotNull(Trial.screen(flat, seed = 1, minutes = 12, viabilityMinute = 10, yChoice = false).measurements.nearFoodRatio)
+        assertTrue(f > c + 0.4 && c < 1.1, "near-food ratio falling $f, flat $c")
     }
 
     /** A steady turn to one side (the TURN output's bias raised) reads as drift well above a plain seed brain's. */
@@ -84,13 +89,12 @@ class TrialTest {
         val p = assertNotNull(plain.measurements.meanAbsTurnBias)
         val b = assertNotNull(biased.measurements.meanAbsTurnBias)
         assertTrue(p < Litmus.TURN_BIAS_MAX, "plain seed drift $p")
-        assertTrue(b > DRIFT_BIASED && b > 3 * p, "biased drift $b against plain $p")
+        // A full tolerance over the limit: the bias costs at least 1 in the score.
+        assertTrue(b > Litmus.TURN_BIAS_MAX + Litmus.TURN_BIAS_TOLERANCE && b > 3 * p, "biased drift $b against plain $p")
     }
 
     private companion object {
-        const val NEAR_FOOD_FALLING = 1.2
         const val TURN_BIAS = 0.1f
-        const val DRIFT_BIASED = 0.12
     }
 
     @Test

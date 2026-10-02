@@ -28,9 +28,9 @@ enum class Death { NONE, NO_FEED, NO_RETURN, NOT_MOVING, EDGE_PILE, NON_NUMERIC 
  * heading tick by tick and adds up its signed turn and its time over all its search bouts
  * together, leaving out ticks on a trail, on an obstacle detour, and on or by a plant stem
  * (where the turn is the trail's, the detour's or the climb's, not the search's). Each forager
- * with at least 120 s of such searching gives |turn| / time; the measure is their mean. A
- * searcher whose turns balance out has a floor of about 0.07 rad/s at 120 s from its random
- * turns alone, half that of 30 s windows, so a steady bias stands out above it.
+ * with at least 120 s of such searching gives |turn| / time; the measure is their mean. The seed
+ * brain, whose turns balance out, measures 0.022 to 0.031 rad/s, so a steady bias stands out
+ * above it.
  */
 class Observer(private val w: World) {
     private val n = w.ants.size
@@ -261,6 +261,17 @@ class Observer(private val w: World) {
         return false
     }
 
+    /**
+     * Amount laid per mm near the food over that 20 to 40 s on; null without walking in both
+     * windows or without any laying. Laying near the food and none farther on meets the target,
+     * so it reads as [NO_FAR_RATIO], not as no data.
+     */
+    private fun nearFoodRatio(): Double? {
+        if (nearMm <= 0.0 || farMm <= 0.0) return null
+        if (farAmount > 0.0) return (nearAmount / nearMm) / (farAmount / farMm)
+        return if (nearAmount > 0.0) NO_FAR_RATIO else null
+    }
+
     fun measurements(): Measurements {
         var marks = 0L
         var mm = 0.0
@@ -288,7 +299,7 @@ class Observer(private val w: World) {
             returnSeconds = if (returns > 0) returnSum / returns else null,
             unloadSeconds = if (unloadsSeen > 0) unloadSum / unloadsSeen else null,
             marksPer5cm = if (mm > 0.0) marks / mm * 50.0 else null,
-            nearFoodRatio = if (nearMm > 0.0 && farMm > 0.0 && farAmount > 0.0) (nearAmount / nearMm) / (farAmount / farMm) else null,
+            nearFoodRatio = nearFoodRatio(),
             neverLaying = if (fullReturners > 0) never.toDouble() / fullReturners else null,
             straightOut = if (outWindows > 0) outSum / outWindows else null,
             straightHome = if (homeWindows > 0) homeSum / homeWindows else null,
@@ -305,6 +316,7 @@ class Observer(private val w: World) {
         const val STEM_MM = 10f // this close to a stem (horizontally) the ant may be turned to face up it
         const val MIN_WINDOW_MM = 20.0
         const val NEAR_SECONDS = 20f
+        const val NO_FAR_RATIO = 10.0
         const val EDGE_MM = 50f
         const val EDGE_SHARE = 0.1
         const val MOVING_MIN = 0.2

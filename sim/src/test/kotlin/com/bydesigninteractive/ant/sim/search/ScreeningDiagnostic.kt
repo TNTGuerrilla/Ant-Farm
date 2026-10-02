@@ -59,8 +59,7 @@ class ScreeningDiagnostic {
         val t1 = System.nanoTime()
         val y = YChoice.run(g, seed)
         val t2 = System.nanoTime()
-        val m = if (y == null) colony.measurements
-        else colony.measurements.copy(naiveFollowing = y.share, naiveChoices = y.choices.toDouble())
+        val m = colony.measurements.copy(naiveFollowing = y.share, naiveChoices = y.choices.toDouble(), naiveStrayShare = y.strayShare)
         return Triple(TrialResult(seed, m, colony.death, colony.minutesRun, y), (t1 - t0) / 1_000_000, (t2 - t1) / 1_000_000)
     }
 

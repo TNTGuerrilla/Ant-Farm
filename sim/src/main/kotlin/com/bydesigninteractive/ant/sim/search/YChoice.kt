@@ -22,20 +22,25 @@ import kotlin.math.sqrt
 /**
  * What the Y-choice trial counted: releases that took the [marked] or the [unmarked] branch,
  * those that [strayed] (left the stem before the fork, turned back, or went off sideways), and
- * those still undecided at the timeout. Only the choices are scored.
+ * those still undecided at the timeout; [left] of the choices took the left branch. The marked
+ * share and the share that made no choice ([strayShare], timeouts included) are scored.
  */
-class YChoiceResult(val marked: Int, val unmarked: Int, val strayed: Int, val timeouts: Int) {
+class YChoiceResult(val marked: Int, val unmarked: Int, val strayed: Int, val timeouts: Int, val left: Int) {
     val choices: Int get() = marked + unmarked
+    val releases: Int get() = choices + strayed + timeouts
+
+    /** Releases that made no choice (strayed or timed out) over all releases, or null with none. */
+    val strayShare: Double? get() = if (releases > 0) (strayed + timeouts).toDouble() / releases else null
 
     /** The marked branch's share of the choices, or null with none. */
     val share: Double? get() = if (choices > 0) marked.toDouble() / choices else null
 
     operator fun plus(o: YChoiceResult) =
-        YChoiceResult(marked + o.marked, unmarked + o.unmarked, strayed + o.strayed, timeouts + o.timeouts)
+        YChoiceResult(marked + o.marked, unmarked + o.unmarked, strayed + o.strayed, timeouts + o.timeouts, left + o.left)
 
     fun line(): String = String.format(
-        Locale.ROOT, "Y choice: marked %d, unmarked %d (share %s), strayed %d, timeouts %d",
-        marked, unmarked, share?.let { String.format(Locale.ROOT, "%.3f", it) } ?: "none", strayed, timeouts,
+        Locale.ROOT, "Y choice: marked %d, unmarked %d (share %s), strayed %d, timeouts %d, left %d of %d choices",
+        marked, unmarked, share?.let { String.format(Locale.ROOT, "%.3f", it) } ?: "none", strayed, timeouts, left, choices,
     )
 }
 
@@ -81,6 +86,7 @@ object YChoice {
         var unmarked = 0
         var strayed = 0
         var timeouts = 0
+        var left = 0
         for (k in 0 until releases) {
             // The fork on a grid around the entrance, the stem pointing away from the nest.
             val forkX = s.entranceX + (k % GRID - (GRID - 1) / 2f) * GRID_MM
@@ -120,6 +126,7 @@ object YChoice {
                         (angle > 0.0) == markedLeft -> MARKED
                         else -> UNMARKED
                     }
+                    if (outcome != STRAYED && angle > 0.0) left++
                     break
                 }
                 if (d > STRAY_MM) {
@@ -135,7 +142,7 @@ object YChoice {
             }
             w.ants.remove(a)
         }
-        return YChoiceResult(marked, unmarked, strayed, timeouts)
+        return YChoiceResult(marked, unmarked, strayed, timeouts, left)
     }
 
     /** Puts a never-fed forager at (x, y) on the surface, searching, facing [heading], with release [k]'s personal brain. */
