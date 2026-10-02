@@ -2,6 +2,7 @@ package com.bydesigninteractive.ant.sim.ant
 
 import com.bydesigninteractive.ant.sim.brain.Action
 import com.bydesigninteractive.ant.sim.brain.Body
+import com.bydesigninteractive.ant.sim.brain.Brain
 import com.bydesigninteractive.ant.sim.world.FoodKind
 import com.bydesigninteractive.ant.sim.world.FoodSource
 
@@ -108,4 +109,8 @@ class Ant(val id: Int, val role: Role, val desiredCrop: Float, val laysTrail: Bo
     var speedOut = 1f
     var deposit = 0f
     var goOut = 0f
+
+    /** This ant's network (its colony's genome with its personal variation) and its hidden state; null for scripted ants. */
+    var brain: Brain? = null
+    var hidden = FloatArray(0)
 }

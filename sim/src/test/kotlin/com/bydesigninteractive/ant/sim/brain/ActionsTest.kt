@@ -1,5 +1,6 @@
 package com.bydesigninteractive.ant.sim.brain
 
+import com.bydesigninteractive.ant.sim.DT
 import com.bydesigninteractive.ant.sim.World
 import com.bydesigninteractive.ant.sim.ant.Ant
 import com.bydesigninteractive.ant.sim.ant.AntParams
@@ -10,6 +11,7 @@ import com.bydesigninteractive.ant.sim.world.FoodKind
 import com.bydesigninteractive.ant.sim.world.FoodSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ActionsTest {
@@ -49,6 +51,35 @@ class ActionsTest {
         assertEquals(setOf(Action.WALK, Action.FEED), allowed(w, a))
         a.crop = 0.5f
         assertEquals(setOf(Action.WALK), allowed(w, a))
+    }
+
+    /** Sensing never swaps or drops the source an ant is feeding at; the feed is recorded at the source it chose. */
+    @Test
+    fun theFeedingSourceStaysPutThroughAFeed() {
+        val w = world()
+        val a = onSurface(w, Role.FORAGER, 300f)
+        val chosen = FoodSource(9, FoodKind.HONEYDEW, a.x + 4f, a.y, 10f, 0.6f)
+        w.surface.addFood(chosen)
+        inputs(w, a)
+        assertSame(chosen, a.food)
+        Actions.begin(w, a, Action.FEED)
+        assertTrue(Actions.busy(a))
+        // A second source appears right under the ant, nearer than the chosen one.
+        val other = FoodSource(10, FoodKind.PREY, a.x, a.y, 10f, 1f)
+        w.surface.addFood(other)
+        val ticks = (w.params.feedSeconds / DT).toInt() + 1
+        repeat(ticks) {
+            if (a.action == Action.FEED) {
+                inputs(w, a)
+                assertSame(chosen, a.food)
+            }
+            Actions.run(w, a)
+        }
+        assertEquals(Action.WALK, a.action)
+        assertEquals(0.6f, a.crop)
+        assertEquals(chosen.id, w.feedEvents.last().foodId)
+        inputs(w, a)
+        assertSame(other, a.food) // free to pick a source again once the feed is over
     }
 
     @Test

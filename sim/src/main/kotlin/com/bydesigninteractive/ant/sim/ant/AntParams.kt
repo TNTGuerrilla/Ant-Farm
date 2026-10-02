@@ -42,6 +42,9 @@ package com.bydesigninteractive.ant.sim.ant
  *   breaks symmetry between equal sources.
  */
 data class AntParams(
+    // M2a: true runs every worker on its own network (BrainAnt); false runs the scripted
+    // Forager and Digger. Task 8 of the M2a plan removes the scripts and this flag.
+    val brains: Boolean = false,
     // Movement (section 10)
     val surfaceSpeed: Float = 20f,
     val shaftSpeed: Float = 8f,

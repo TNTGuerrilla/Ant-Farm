@@ -1,6 +1,7 @@
 package com.bydesigninteractive.ant.sim
 
 import com.bydesigninteractive.ant.sim.ant.Ant
+import com.bydesigninteractive.ant.sim.ant.BrainAnt
 import com.bydesigninteractive.ant.sim.ant.Digger
 import com.bydesigninteractive.ant.sim.ant.Forager
 import com.bydesigninteractive.ant.sim.ant.AntParams
@@ -9,6 +10,10 @@ import com.bydesigninteractive.ant.sim.ant.Role
 import com.bydesigninteractive.ant.sim.ant.Space
 import com.bydesigninteractive.ant.sim.ant.SpatialIndex
 import com.bydesigninteractive.ant.sim.ant.SurfaceWalk
+import com.bydesigninteractive.ant.sim.brain.Action
+import com.bydesigninteractive.ant.sim.brain.Genome
+import com.bydesigninteractive.ant.sim.brain.Instinct
+import com.bydesigninteractive.ant.sim.brain.Outputs
 import com.bydesigninteractive.ant.sim.world.Excavation
 import com.bydesigninteractive.ant.sim.world.Material
 import com.bydesigninteractive.ant.sim.world.NestGenerator
@@ -33,7 +38,8 @@ data class FeedEvent(val tick: Long, val foodId: Int)
 
 /**
  * The whole simulation: the surface map, the nest slice, and the ants moving between them
- * through the entrance. Fully determined by [seed]; [step] advances it by one tick.
+ * through the entrance. Fully determined by [seed]; [step] advances it by one tick. With
+ * [AntParams.brains], every ant runs a personal copy of [genome] (the instinct brain unless given).
  */
 class World(
     val seed: Long,
@@ -41,6 +47,7 @@ class World(
     nestWidth: Int = 1200,
     nestDepth: Int = 1000,
     rocks: Boolean = true,
+    genome: Genome? = null,
 ) {
     val rng = Random(seed)
     val nest = NestGrid(NestGenerator(seed, nestWidth, nestDepth))
@@ -49,6 +56,9 @@ class World(
     val excavation = Excavation(nest, plan)
     val paths = NestPaths(nest, excavation)
     val surface = SurfaceMap(seed, params, rocks)
+
+    /** The colony's genome (spec 2.5): the one given, else the shipped instinct brain. */
+    val genome: Genome = genome ?: Instinct.genome
     val ants = ArrayList<Ant>()
     val surfaceIndex = SpatialIndex()
 
@@ -60,10 +70,15 @@ class World(
 
     // The brain's input vector (one simulation thread).
     internal val inputs = FloatArray(com.bydesigninteractive.ant.sim.brain.Senses.COUNT)
+    internal val outputs = FloatArray(Outputs.COUNT)
+    internal val hiddenScratch = FloatArray(this.genome.hidden)
+
+    /** Brain outputs that came out as no number (replaced by 0); the realism search drops such a variant. */
+    var nonFinite = 0
 
     // Action masks and choice weights for the brain (one simulation thread).
-    internal val mask = BooleanArray(com.bydesigninteractive.ant.sim.brain.Action.COUNT)
-    internal val actionWeights = FloatArray(com.bydesigninteractive.ant.sim.brain.Action.COUNT)
+    internal val mask = BooleanArray(Action.COUNT)
+    internal val actionWeights = FloatArray(Action.COUNT)
 
     /** Recent feeding events, oldest first, for the last [FEED_WINDOW_TICKS] ticks. */
     val feedEvents = ArrayDeque<FeedEvent>()
@@ -100,6 +115,11 @@ class World(
         a.bornTick = tick
         placeAtEntrance(a)
         a.state = if (role == Role.FORAGER) AntState.EXIT else AntState.IDLE
+        if (params.brains) {
+            a.brain = genome.personal(seed, a.id, biasFrom = Outputs.DEPOSIT)
+            a.hidden = FloatArray(genome.hidden)
+            a.action = if (role == Role.FORAGER) Action.LEAVE else Action.REST
+        }
         ants += a
         return a
     }
@@ -192,9 +212,15 @@ class World(
         p.phaseNanos[phase] += System.nanoTime() - t0
     }
 
-    private fun behave(a: Ant) = when (a.role) {
-        Role.FORAGER -> Forager.update(this, a)
-        Role.DIGGER -> Digger.update(this, a)
+    private fun behave(a: Ant) {
+        if (params.brains) {
+            BrainAnt.update(this, a)
+            return
+        }
+        when (a.role) {
+            Role.FORAGER -> Forager.update(this, a)
+            Role.DIGGER -> Digger.update(this, a)
+        }
     }
 
     private fun placeAtEntrance(a: Ant) {

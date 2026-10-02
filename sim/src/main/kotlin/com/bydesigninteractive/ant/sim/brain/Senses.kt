@@ -8,6 +8,7 @@ import com.bydesigninteractive.ant.sim.ant.SurfaceWalk
 import com.bydesigninteractive.ant.sim.world.DayClock
 import com.bydesigninteractive.ant.sim.world.DistanceMap
 import com.bydesigninteractive.ant.sim.world.FoodKind
+import com.bydesigninteractive.ant.sim.world.FoodSource
 import com.bydesigninteractive.ant.sim.world.GroundTemperature
 import kotlin.math.exp
 import kotlin.math.max
@@ -18,6 +19,8 @@ import kotlin.math.sqrt
  * The brain's input vector (spec 2.1): senses, body state, the colony's shared channels and
  * context flags, each scaled to about -1..1 (the table in the M2a plan, Task 4). [fill] writes
  * every value and draws exactly one number (the noise input) from the world's random generator.
+ * On the surface it also sets the ant's food target ([Ant.food]) to the source within reach, except
+ * while the ant is feeding, when the source it chose stays its target.
  * Changing the order or meaning of any input must change [LAYOUT], which retires saved genomes.
  *
  * Two readings of the spec: the home-scent level of spec 2.1 is carried by [FOOT_L] and [FOOT_R]
@@ -144,7 +147,7 @@ internal object Senses {
             x[HONEYDEW] = 1f - sqrt(dx * dx + dy * dy) / p.plantOdourRadius
             x[HONEYDEW_SIN] = bearingSin(a, dx, dy)
         }
-        a.food = null
+        var target: FoodSource? = null
         val food = s.nearestFood(a.x, a.y, p.foodSenseRadius)
         if (food != null) {
             val dx = food.x - a.x
@@ -158,7 +161,7 @@ internal object Senses {
                 x[HONEYDEW] = strength
                 x[HONEYDEW_SIN] = bearingSin(a, dx, dy)
             }
-            if (d <= food.radius) a.food = food
+            if (d <= food.radius) target = food
         }
         val stem = s.sdf.stemAt(a.x, a.y, a.z, p.stemTouch)
         if (stem != null) {
@@ -166,13 +169,19 @@ internal object Senses {
             val dx = stem.x - a.x
             val dy = stem.y - a.y
             val dz = stem.z - a.z
-            if (dx * dx + dy * dy + dz * dz <= stem.radius * stem.radius) a.food = stem
+            if (dx * dx + dy * dy + dz * dz <= stem.radius * stem.radius) target = stem
         }
-        x[AT_FOOD] = flag(a.food != null)
+        // The source an ant is feeding at is its own until the feed ends: sensing never swaps or
+        // drops it mid-feed (another source in reach, or the ant nudged off the cluster).
+        if (!feeding(a)) a.food = target
+        x[AT_FOOD] = flag(target != null)
         val spoil = s.spoil.get(a.x, a.y)
         x[SPOIL] = spoil / (spoil + SPOIL_HALF)
         x[AT_ENTRANCE] = flag(toEntrance <= p.entranceRadius)
     }
+
+    /** True while the ant is committed to a feed (the FEED primitive is running). */
+    private fun feeding(a: Ant): Boolean = a.action == Action.FEED || Actions.busy(a)
 
     private fun nest(w: World, a: Ant, x: FloatArray) {
         a.food = null
