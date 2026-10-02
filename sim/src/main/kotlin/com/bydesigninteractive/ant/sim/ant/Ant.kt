@@ -1,5 +1,6 @@
 package com.bydesigninteractive.ant.sim.ant
 
+import com.bydesigninteractive.ant.sim.brain.Body
 import com.bydesigninteractive.ant.sim.world.FoodKind
 import com.bydesigninteractive.ant.sim.world.FoodSource
 
@@ -72,6 +73,26 @@ class Ant(val id: Int, val role: Role, val desiredCrop: Float, val laysTrail: Bo
     var digY = 0
     var food: FoodSource? = null
 
-    /** The kind of the last food this ant fed at; written for the renderer, never read by the simulation. */
+    /** The kind of the last food this ant fed at: for the renderer, and for contacts while the crop is full. */
     var lastFoodKind: FoodKind? = null
+
+    // M2a brain state, read by Senses and written by Body and Contacts (unused by the scripted ants).
+    /** Energy reserves, 0 to 1: fall outside, refill in the nest and on feeding ([Body]). */
+    var reserves = 1f
+    var ageSeconds = 0f
+
+    /** Seconds since this ant last fed at a source. */
+    var sinceFed = Body.NEVER
+
+    // Contacts: the count decaying over 10 s and the tick it was last decayed, the last nestmate
+    // touched (-1 when touching none), what that nestmate carried, how long ago, and the nudge.
+    var contactRate = 0f
+    var contactTick = 0L
+    var lastContactId = -1
+    var metSuccess = false
+    var metHoneydew = false
+    var metPrey = false
+    var metSeconds = Body.NEVER
+    var nudge = 0f
+    var nudgeLeft = 0f
 }

@@ -22,4 +22,13 @@ class SpatialIndexTest {
         assertEquals(0, index.countNear(probe, 10f))
         assertEquals(2, index.countNear(ants[0], 10f))
     }
+
+    @Test
+    fun nearestFindsTheClosestOtherAntWithinReach() {
+        val index = SpatialIndex()
+        val ants = listOf(ant(0, 1000f, 1000f), ant(1, 1004f, 1000f), ant(2, 1002f, 1000f))
+        index.rebuild(ants)
+        assertEquals(2, index.nearest(ants[0], 3f)?.id)
+        assertEquals(null, index.nearest(ants[1], 1f))
+    }
 }

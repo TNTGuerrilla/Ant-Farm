@@ -51,6 +51,16 @@ class World(
     val surface = SurfaceMap(seed, params, rocks)
     val ants = ArrayList<Ant>()
     val surfaceIndex = SpatialIndex()
+
+    /** Nest ants bucketed by position for contacts (M2a). */
+    val nestIndex = SpatialIndex(bucketMm = 4f, extentMm = maxOf(nestWidth, nestDepth), space = Space.NEST)
+
+    /** Foragers that came home with food, over the last 60 s: the returner rate (spec 2.1). */
+    val returners = com.bydesigninteractive.ant.sim.brain.RateWindow(60)
+
+    // The brain's input vector (one simulation thread).
+    internal val inputs = FloatArray(com.bydesigninteractive.ant.sim.brain.Senses.COUNT)
+
     /** Recent feeding events, oldest first, for the last [FEED_WINDOW_TICKS] ticks. */
     val feedEvents = ArrayDeque<FeedEvent>()
 
@@ -139,7 +149,10 @@ class World(
         timed(p, TickProfile.NEST) { paths.refresh() }
         timed(p, TickProfile.FIELDS) { surface.step() }
         timed(p, TickProfile.NEST) { nest.stepPheromone(DT, params.buildPheromoneLifetime) }
-        timed(p, TickProfile.INDEX) { surfaceIndex.rebuild(ants) }
+        timed(p, TickProfile.INDEX) {
+            surfaceIndex.rebuild(ants)
+            nestIndex.rebuild(ants)
+        }
         if (p == null) {
             for (a in ants) behave(a)
         } else {

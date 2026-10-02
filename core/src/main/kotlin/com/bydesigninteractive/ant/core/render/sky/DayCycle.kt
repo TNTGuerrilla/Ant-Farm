@@ -1,5 +1,6 @@
 package com.bydesigninteractive.ant.core.render.sky
 
+import com.bydesigninteractive.ant.sim.world.DayClock
 import kotlin.math.sqrt
 
 /**
@@ -9,8 +10,8 @@ import kotlin.math.sqrt
  * dim blue moonlight and a raised blue ambient so the scene stays readable.
  */
 object DayCycle {
-    const val DAY_SECONDS = 3600f
-    const val START = 0.38f
+    const val DAY_SECONDS = DayClock.DAY_SECONDS
+    const val START = DayClock.START
 
     private class Key(
         val t: Float,
@@ -30,10 +31,7 @@ object DayCycle {
     )
 
     /** The time of day, 0 to 1 (0 midnight, 0.5 noon), for [seconds] of simulation. */
-    fun timeOfDay(seconds: Float): Float {
-        val t = (seconds / DAY_SECONDS + START) % 1f
-        return if (t < 0f) t + 1f else t
-    }
+    fun timeOfDay(seconds: Float): Float = DayClock.timeOfDay(seconds)
 
     /** Fills [out] with the sky at time of day [t] and returns it. */
     fun sky(t: Float, out: SkyState): SkyState {
