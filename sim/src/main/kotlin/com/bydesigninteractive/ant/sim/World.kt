@@ -78,6 +78,9 @@ class World(
     internal val mask = BooleanArray(Action.COUNT)
     internal val actionWeights = FloatArray(Action.COUNT)
 
+    // The trail choice at the nest exit (Primitives.faceExitTrail; one simulation thread).
+    internal val exitWeights = FloatArray(com.bydesigninteractive.ant.sim.ant.Primitives.EXIT_DIRECTIONS)
+
     /** Recent feeding events, oldest first, for the last [FEED_WINDOW_TICKS] ticks. */
     val feedEvents = ArrayDeque<FeedEvent>()
 
@@ -155,6 +158,9 @@ class World(
         a.homeDy = a.y - surface.entranceY
         a.runLeft = 0f
         a.onTrail = false
+        // The antenna readings are from before the ant went in; it senses afresh at its next evaluation.
+        a.senseL = 0f
+        a.senseR = 0f
         a.timer = 0f
         a.arrived = false
     }

@@ -55,6 +55,9 @@ internal object Actions {
     /** A pellet is dropped only this far beyond the entrance rim (mm), as the scripted digger did. */
     const val DROP_CLEARANCE = 3f
 
+    /** A follower leaves the trail when its reading falls below this share of the trail threshold (M1's trailLossFraction). */
+    const val FOLLOW_EXIT = 0.3f
+
     fun sigmoid(v: Float): Float = 1f / (1f + exp(-v))
 
     /** Timed primitives run to the end without the brain: feeding, and unloading and digging once arrived. */
@@ -203,6 +206,7 @@ internal object Actions {
         val speed = p.surfaceSpeed * a.speedOut * (if (a.carriesPellet) p.loadedFactor else 1f)
         val stem = w.surface.sdf.stemAt(a.x, a.y, a.z, p.stemTouch)
         if (stem != null && a.role == Role.FORAGER && a.crop <= 0f) {
+            // Climbing to the aphids ends any trail following; only a full reading starts it again.
             a.onTrail = false
             Primitives.faceUpStem(a, stem)
             SurfaceWalk.step(w, a, speed)
@@ -269,6 +273,7 @@ internal object Actions {
     private fun leave(w: World, a: Ant) {
         if (!NestMotion.goUp(w, a)) return
         w.exitNest(a)
+        if (a.role == Role.FORAGER && !a.carriesPellet) Primitives.faceExitTrail(w, a)
         a.action = Action.WALK
     }
 
@@ -296,8 +301,9 @@ internal object Actions {
     }
 
     /**
-     * Sets the display state the renderer, HUD and tests read from the action, and onTrail: a
-     * searching forager whose antennae read at least the trail threshold is counted as on a trail.
+     * Sets the display state the renderer, HUD and tests read from the action, then the following
+     * state ([follow]). An empty forager that is tired ([Body.TIRED]) is shown as returning: it has
+     * given up the search and is going home, as the scripted forager's give-up did.
      */
     fun syncState(w: World, a: Ant) {
         a.state = if (a.space == Space.NEST) {
@@ -311,10 +317,36 @@ internal object Actions {
             a.action == Action.FEED -> AntState.FEED
             a.carriesPellet -> AntState.DUMP
             a.role == Role.DIGGER -> AntState.GO_HOME
-            a.crop > 0f -> AntState.RETURN
+            a.crop > 0f || a.reserves < Body.TIRED -> AntState.RETURN
             else -> AntState.SEARCH
         }
-        a.onTrail = a.state == AntState.SEARCH && a.senseL + a.senseR >= w.params.trailThreshold
+        follow(w, a)
+    }
+
+    /**
+     * The trail-following state ([Ant.onTrail]) that GruterScenarioTest measures, with the scripted
+     * forager's thresholds from M1: a searching forager enters it when its two antennae together
+     * read at least the trail threshold T, and keeps it until the reading falls below
+     * [FOLLOW_EXIT] T or it stops searching. The scripts entered only with a chance that rose
+     * steeply with the reading; that chance was the script's decision to follow, which is now the
+     * brain's (it steers along the trail or wanders off it), so it does not come back here. The
+     * state only records what the ant is doing and never feeds back into the brain.
+     *
+     * The readings are the trail senses of the last evaluation, refreshed every other tick (spec
+     * 2.3). They are at most one tick old: 1 mm of walking, a tenth of the 10 mm the antennae
+     * reach ahead, while the ant holds the turn it chose from those same readings. Sampling the
+     * field every tick would add two field reads per surface ant per tick to the TV budget for no
+     * change a 200-tick sample can see. [World.exitNest] clears the readings, so an ant leaving the
+     * nest never starts with the ones it had when it went in.
+     */
+    private fun follow(w: World, a: Ant) {
+        if (a.state != AntState.SEARCH || a.role != Role.FORAGER) {
+            a.onTrail = false
+            return
+        }
+        val reading = a.senseL + a.senseR
+        val t = w.params.trailThreshold
+        a.onTrail = if (a.onTrail) reading >= FOLLOW_EXIT * t else reading >= t
     }
 
     private fun distanceToEntrance(w: World, a: Ant): Float {

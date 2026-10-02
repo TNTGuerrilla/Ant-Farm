@@ -1,5 +1,6 @@
 package com.bydesigninteractive.ant.sim.brain
 
+import com.bydesigninteractive.ant.sim.ant.AntParams
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.tanh
@@ -139,11 +140,51 @@ class SeedBrainTest {
         assertTrue(wasTired[SeedBrain.U_SEARCH] < -0.9f && wasTired[SeedBrain.U_HOME] > 0.9f, "from tired")
     }
 
-    // Circuit 2: search.
+    // Circuit 2: search. Task 8b: the turn reads the normalised difference (L - R) / (L + R)
+    // (TRAIL_DIFF) instead of each antenna's saturating reading, so it no longer weakens on a
+    // strong trail; the test checks that too.
     @Test
-    fun theSearchTurnsTowardTheStrongerTrail() {
-        assertTrue(turn(outputs(Senses.TRAIL_L to 0.6f, Senses.TRAIL_R to 0.4f)) > 0.5f)
-        assertTrue(turn(outputs(Senses.TRAIL_L to 0.4f, Senses.TRAIL_R to 0.6f)) < -0.5f)
+    fun theSearchTurnsTowardTheStrongerTrailAsFirmlyOnAStrongTrailAsOnAFaintOne() {
+        for (level in floatArrayOf(0.3f, 0.8f)) { // each antenna at about 0.4 T and at 4 T
+            val left = turn(outputs(Senses.TRAIL_L to level, Senses.TRAIL_R to level, Senses.TRAIL_DIFF to 0.3f))
+            val right = turn(outputs(Senses.TRAIL_L to level, Senses.TRAIL_R to level, Senses.TRAIL_DIFF to -0.3f))
+            assertTrue(left > 0.5f && right < -0.5f, "trail level $level: left $left, right $right")
+        }
+        val faint = turn(outputs(Senses.TRAIL_L to 0.3f, Senses.TRAIL_R to 0.3f, Senses.TRAIL_DIFF to 0.3f))
+        val strong = turn(outputs(Senses.TRAIL_L to 0.8f, Senses.TRAIL_R to 0.8f, Senses.TRAIL_DIFF to 0.3f))
+        assertEquals(faint, strong, 0.05f * faint, "faint $faint, strong $strong")
+    }
+
+    // The trail relay holds between the following state's thresholds: on at T, off below 0.3 T.
+    @Test
+    fun theTrailRelayLatchesLikeTheFollowingState() {
+        fun relay(first: Float, then: Float): Float {
+            val b = genome.brain()
+            val h = FloatArray(genome.hidden)
+            val s = FloatArray(genome.hidden)
+            val o = FloatArray(genome.outputs)
+            val x = inputs(Senses.TRAIL_L to first / 2f, Senses.TRAIL_R to first / 2f)
+            repeat(5) { b.evaluate(x, h, s, o) }
+            x[Senses.TRAIL_L] = then / 2f
+            x[Senses.TRAIL_R] = then / 2f
+            repeat(20) { b.evaluate(x, h, s, o) }
+            return h[SeedBrain.U_TRAIL_ON]
+        }
+        assertTrue(relay(0f, 0.8f) > 0.9f, "a reading above T turns it on")
+        assertTrue(relay(0.8f, 0.4f) > 0.9f, "between 0.3 T and T it stays on")
+        assertTrue(relay(0f, 0.4f) < -0.9f, "between 0.3 T and T it stays off")
+        assertTrue(relay(0.8f, 0.2f) < -0.9f, "below 0.3 T it turns off")
+    }
+
+    // Task 8b: on a trail, a searcher turns away from home (path integration), so it follows the trail outward.
+    @Test
+    fun aFollowerTurnsAwayFromHomeAndASearcherOffTheTrailDoesNot() {
+        val trail = arrayOf(Senses.TRAIL_L to 0.5f, Senses.TRAIL_R to 0.5f)
+        val homeLeft = turn(outputs(*trail, Senses.HOME_SIN to 0.5f, Senses.HOME_COS to -0.87f))
+        val homeRight = turn(outputs(*trail, Senses.HOME_SIN to -0.5f, Senses.HOME_COS to -0.87f))
+        assertTrue(homeLeft < -0.5f && homeRight > 0.5f, "home left $homeLeft, home right $homeRight")
+        val off = turn(outputs(Senses.HOME_SIN to 0.5f, Senses.HOME_COS to -0.87f))
+        assertTrue(abs(off) < 0.05f, "off the trail $off")
     }
 
     @Test
@@ -216,15 +257,21 @@ class SeedBrainTest {
         assertTrue(home > 0f && home < 0.3f * out, "noise spread home $home, out $out")
     }
 
+    // Task 8b changed this circuit's level: a fresh forager's mark is now a fraction of the trail
+    // threshold, so that only several foragers together make a trail (below about 75 workers
+    // trails barely form), and the crowding and saturation cuts are milder (at most 5.6 times).
     @Test
     fun onlyAFullForagerLaysTrailAndLessWhenCrowdedOrOnAStrongTrail() {
+        val p = AntParams()
         val fresh = deposit(*full)
-        assertTrue(fresh > 0.9f, "full $fresh")
+        assertTrue(fresh > 2f * Outputs.DEPOSIT_MIN, "full $fresh")
+        val mark = p.markAmount * fresh
+        assertTrue(mark in 0.2f * p.trailThreshold..0.5f * p.trailThreshold, "a fresh mark $mark against T ${p.trailThreshold}")
         assertTrue(deposit(Senses.CROP to 0.6f, Senses.FED_RECENT to 1f) < Outputs.DEPOSIT_MIN)
         val crowded = deposit(*full, Senses.CONTACT_RATE to 0.67f)
-        assertTrue(fresh - crowded in 0.1f..0.3f, "crowded $crowded, fresh $fresh")
+        assertTrue(crowded < 0.8f * fresh && crowded > fresh / 5.6f, "crowded $crowded, fresh $fresh")
         val onTrail = deposit(*full, Senses.TRAIL_L to 0.8f, Senses.TRAIL_R to 0.8f)
-        assertTrue(fresh - onTrail in 0.2f..0.45f, "on a strong trail $onTrail, fresh $fresh")
+        assertTrue(onTrail < 0.9f * fresh && onTrail > fresh / 5.6f, "on a strong trail $onTrail, fresh $fresh")
     }
 
     @Test

@@ -53,6 +53,36 @@ class SensesTest {
         assertEquals(0f, x[Senses.HEALTH])
     }
 
+    // Task 8b: the normalised trail difference, the same at any strength, shut far below the threshold.
+    @Test
+    fun theTrailDifferenceIsNormalisedAndGatedByTheReading() {
+        val t = AntParams().trailThreshold
+        val weak = Senses.trailDiff(0.6f * t, 0.4f * t, t)
+        val strong = Senses.trailDiff(6f * t, 4f * t, t)
+        assertEquals(0.2f, weak, 0.001f)
+        assertEquals(weak, strong, 0.001f)
+        assertEquals(-weak, Senses.trailDiff(0.4f * t, 0.6f * t, t), 1e-6f)
+        assertEquals(0f, Senses.trailDiff(0.06f * t, 0.03f * t, t))
+        assertEquals(0f, Senses.trailDiff(0f, 0f, t))
+        val half = Senses.trailDiff(0.2f * t, 0f, t) // a reading of 0.2 T: the gate half open
+        assertEquals(0.5f, half, 0.01f)
+    }
+
+    @Test
+    fun aTrailAheadLeftReadsAsAPositiveDifference() {
+        val w = world()
+        val s = w.surface
+        val a = onSurface(w, s.entranceX + 200f, s.entranceY, 0f) // facing +x
+        var x = a.x
+        while (x < a.x + 40f) {
+            s.trail.add(x, a.y + 5f, s.ground.height(x, a.y + 5f), 10f) // a trail 5 mm to the ant's left
+            x += 5f
+        }
+        val v = read(w, a)
+        assertTrue(v[Senses.TRAIL_DIFF] > 0.1f, "trail difference ${v[Senses.TRAIL_DIFF]}")
+        assertEquals(Senses.trailDiff(a.senseL, a.senseR, w.params.trailThreshold), v[Senses.TRAIL_DIFF])
+    }
+
     @Test
     fun foodWithinReachIsTheTarget() {
         val w = world()

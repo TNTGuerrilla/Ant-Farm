@@ -28,49 +28,54 @@ import kotlin.math.sqrt
  * count given to every nest ant, a simplification of "felt by contact in the nest".
  */
 internal object Senses {
-    /** m2a-2: the seed brain grew to 19 hidden units and personal variation became per unit, which retires m2a-1 genomes. */
-    const val LAYOUT = "m2a-2"
+    /**
+     * m2a-2: the seed brain grew to 19 hidden units and personal variation became per unit, which
+     * retires m2a-1 genomes. m2a-3: the normalised trail difference [TRAIL_DIFF] was added after
+     * [TRAIL_R], which moves every later input and retires m2a-2 genomes.
+     */
+    const val LAYOUT = "m2a-3"
 
     const val TRAIL_L = 0
     const val TRAIL_R = 1
-    const val FOOT_L = 2
-    const val FOOT_R = 3
-    const val HOME_SIN = 4
-    const val HOME_COS = 5
-    const val HOME_DIST = 6
-    const val HONEYDEW = 7
-    const val HONEYDEW_SIN = 8
-    const val PREY = 9
-    const val PREY_SIN = 10
-    const val CROP = 11
-    const val FULL = 12
-    const val RESERVES = 13
-    const val AGE = 14
-    const val TEMPERATURE = 15
-    const val HEALTH = 16
-    const val DAMAGE = 17
-    const val CONTACT_RATE = 18
-    const val RETURNERS = 19
-    const val MET_SUCCESS = 20
-    const val MET_HONEYDEW = 21
-    const val MET_PREY = 22
-    const val NUDGE = 23
-    const val FED_RECENT = 24
-    const val SPOIL = 25
-    const val ROOM_NEEDED = 26
-    const val DIGGER = 27
-    const val ON_STEM = 28
-    const val AT_FOOD = 29
-    const val IN_NEST = 30
-    const val CARRYING = 31
-    const val DIG_SITE = 32
-    const val AT_ENTRANCE = 33
-    const val NOISE = 34
-    const val BIAS = 35
-    const val COUNT = 36
+    const val TRAIL_DIFF = 2
+    const val FOOT_L = 3
+    const val FOOT_R = 4
+    const val HOME_SIN = 5
+    const val HOME_COS = 6
+    const val HOME_DIST = 7
+    const val HONEYDEW = 8
+    const val HONEYDEW_SIN = 9
+    const val PREY = 10
+    const val PREY_SIN = 11
+    const val CROP = 12
+    const val FULL = 13
+    const val RESERVES = 14
+    const val AGE = 15
+    const val TEMPERATURE = 16
+    const val HEALTH = 17
+    const val DAMAGE = 18
+    const val CONTACT_RATE = 19
+    const val RETURNERS = 20
+    const val MET_SUCCESS = 21
+    const val MET_HONEYDEW = 22
+    const val MET_PREY = 23
+    const val NUDGE = 24
+    const val FED_RECENT = 25
+    const val SPOIL = 26
+    const val ROOM_NEEDED = 27
+    const val DIGGER = 28
+    const val ON_STEM = 29
+    const val AT_FOOD = 30
+    const val IN_NEST = 31
+    const val CARRYING = 32
+    const val DIG_SITE = 33
+    const val AT_ENTRANCE = 34
+    const val NOISE = 35
+    const val BIAS = 36
+    const val COUNT = 37
 
     val NAMES = arrayOf(
-        "trailL", "trailR", "footL", "footR", "homeSin", "homeCos", "homeDist",
+        "trailL", "trailR", "trailDiff", "footL", "footR", "homeSin", "homeCos", "homeDist",
         "honeydew", "honeydewSin", "prey", "preySin",
         "crop", "full", "reserves", "age", "temperature", "health", "damage",
         "contactRate", "returners", "metSuccess", "metHoneydew", "metPrey", "nudge",
@@ -78,6 +83,17 @@ internal object Senses {
         "onStem", "atFood", "inNest", "carrying", "digSite", "atEntrance",
         "noise", "bias",
     )
+
+    /**
+     * [TRAIL_DIFF]'s gate, in units of the trail threshold T for the two antennae together: shut
+     * below [DIFF_FROM] T (a stray mark or two, whose ratio is mostly noise), fully open from
+     * [DIFF_FULL] T, the reading at which a follower loses the trail (`Actions.FOLLOW_EXIT`).
+     */
+    const val DIFF_FROM = 0.1f
+    const val DIFF_FULL = 0.3f
+
+    /** Keeps (L - R) / (L + R) finite; far below any reading the gate lets through. */
+    const val DIFF_EPS = 1e-3f
 
     const val FOOT_HALF = 0.5f
     const val HOME_HALF = 500f
@@ -126,6 +142,7 @@ internal object Senses {
         SurfaceWalk.sense(w, a, s.trail)
         x[TRAIL_L] = a.senseL / (a.senseL + p.trailThreshold)
         x[TRAIL_R] = a.senseR / (a.senseR + p.trailThreshold)
+        x[TRAIL_DIFF] = trailDiff(a.senseL, a.senseR, p.trailThreshold)
 
         val ex = s.entranceX - a.x
         val ey = s.entranceY - a.y
@@ -178,6 +195,20 @@ internal object Senses {
         val spoil = s.spoil.get(a.x, a.y)
         x[SPOIL] = spoil / (spoil + SPOIL_HALF)
         x[AT_ENTRANCE] = flag(toEntrance <= p.entranceRadius)
+    }
+
+    /**
+     * The normalised trail difference (L - R) / (L + R) of the simulation reference (section 4,
+     * Perna 2012), the turn signal of spec section 3, circuit 2: the same on a faint trail as on a
+     * strong one, so a follower holds a busy trail as firmly as a new one. Gated by the total
+     * reading (0 below [DIFF_FROM] T, rising linearly to 1 at [DIFF_FULL] T), so stray marks far
+     * below the threshold do not steer. Positive when the left antenna reads more.
+     */
+    fun trailDiff(l: Float, r: Float, threshold: Float): Float {
+        val sum = l + r
+        val gate = ((sum / threshold - DIFF_FROM) / (DIFF_FULL - DIFF_FROM)).coerceIn(0f, 1f)
+        if (gate <= 0f) return 0f
+        return gate * (l - r) / (sum + DIFF_EPS)
     }
 
     /** True while the ant is committed to a feed (the FEED primitive is running). */

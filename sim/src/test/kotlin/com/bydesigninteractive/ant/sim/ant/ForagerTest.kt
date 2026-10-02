@@ -3,6 +3,7 @@ package com.bydesigninteractive.ant.sim.ant
 import com.bydesigninteractive.ant.sim.World
 import com.bydesigninteractive.ant.sim.world.FoodKind
 import com.bydesigninteractive.ant.sim.world.FoodSource
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -40,6 +41,36 @@ class ForagerTest {
         val w = world(5, 1f, 10)
         run(w, 20)
         assertTrue(w.surface.trail.max() > 0f)
+    }
+
+    // Task 8b: the trail choice at the nest exit (an innate primitive again, without the scripted join chance).
+    @Test
+    fun emergingForagersFaceTheStrongerSideAtTheExit() {
+        val w = World(7)
+        w.predig(1)
+        val s = w.surface
+        fun count(): Pair<Int, Int> {
+            var plus = 0
+            var minus = 0
+            repeat(500) {
+                val a = w.addAnt(Role.FORAGER)
+                w.exitNest(a)
+                Primitives.faceExitTrail(w, a)
+                if (cos(a.heading) > 0.5f) plus++
+                if (cos(a.heading) < -0.5f) minus++
+            }
+            return plus to minus
+        }
+        val (bareP, bareM) = count()
+        assertTrue(bareP in 100..220 && bareM in 100..220, "no trail: toward +x $bareP, toward -x $bareM")
+        // A trail on the +x side of the entrance only.
+        var x = s.entranceX + 10f
+        while (x < s.entranceX + 200f) {
+            s.trail.add(x, s.entranceY + 1f, s.ground.height(x, s.entranceY + 1f), 10f)
+            x += 10f
+        }
+        val (plus, minus) = count()
+        assertTrue(plus > 250 && plus > 3 * minus, "with a trail toward +x: toward +x $plus, toward -x $minus")
     }
 
     @Test

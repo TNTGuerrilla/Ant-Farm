@@ -38,7 +38,7 @@ class FingerprintTest {
         kotlin.test.assertTrue(profile.sdfEvaluations > 0L)
     }
 
-    /** Seed 1's starter run has its first detour at about tick 431 (around a rock by a plant). */
+    /** Seed 1's starter run has its first detour at tick 648 (measured in M2a Task 8b, with the instinct brain). */
     @Test
     fun theDetourRunMatchesItsFingerprint() {
         val w = Scenarios.starter(1)
@@ -47,10 +47,10 @@ class FingerprintTest {
         assertEquals(DETOUR, fingerprint(w))
     }
 
-    // Re-recorded in M2a Task 8: every ant runs the instinct brain.
+    // Re-recorded in M2a Task 8 (every ant runs the instinct brain) and 8b (trail following).
     private companion object {
-        const val STARTER = "sum=547889.6989145946 trail=4 home=77 trailMax=4.4868712 homeMax=0.8155839 feeds=2 unloads=0 ants=80 rng=36691888687298254"
-        const val DETOUR = "sum=552394.0885981531 trail=12 home=74 trailMax=3.6309822 homeMax=0.63593847 feeds=9 unloads=0 ants=80 rng=4980140498390456359"
-        const val COLONY = "sum=7185262.319803611 trail=0 home=30 trailMax=0.0 homeMax=2.7777545 feeds=0 unloads=0 ants=1000 rng=-7510369823861576677"
+        const val STARTER = "sum=573753.7009821638 trail=5 home=89 trailMax=0.5866279 homeMax=0.8992291 feeds=2 unloads=0 ants=80 rng=8471752498746914134"
+        const val DETOUR = "sum=481446.4140669968 trail=12 home=76 trailMax=2.3364508 homeMax=0.6653569 feeds=16 unloads=0 ants=80 rng=-8468741863998431981"
+        const val COLONY = "sum=7196387.902465055 trail=0 home=32 trailMax=0.0 homeMax=3.1059964 feeds=0 unloads=0 ants=1000 rng=-6538686098725575125"
     }
 }

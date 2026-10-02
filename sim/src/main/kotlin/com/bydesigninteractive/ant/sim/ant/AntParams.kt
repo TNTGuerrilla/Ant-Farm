@@ -5,11 +5,13 @@ package com.bydesigninteractive.ant.sim.ant
  * simulation reference.
  *
  * Since M2a each ant decides with its own network (sim/brain), so the scripted rules' knobs are
- * gone: search runs and turns, the trail-following chance and gain, the trail choice at the
- * exit, deposit saturation and crowding, and the spoil drop and pick-up rates. Their values and
- * the M1 to M1b-2b calibration history against GruterScenarioTest are in git and in the seed
- * brain's KDoc, which carried them into circuits. trailThreshold (1.96) stays: the senses scale
- * trail readings by it, and a searching forager reading at least that much is on a trail.
+ * gone: search runs and turns, the trail-following chance and gain, deposit saturation and
+ * crowding, and the spoil drop and pick-up rates. Their values and the M1 to M1b-2b calibration
+ * history against GruterScenarioTest are in git and in the seed brain's KDoc, which carried them
+ * into circuits. The trail choice at the exit came back in M2a Task 8b as an innate primitive
+ * with its own constants (`Primitives.faceExitTrail`). trailThreshold (1.96) stays: the senses
+ * scale trail readings by it, and a searching forager starts following a trail when it reads at
+ * least that much (`Actions.follow`).
  */
 data class AntParams(
     // Movement (section 10)

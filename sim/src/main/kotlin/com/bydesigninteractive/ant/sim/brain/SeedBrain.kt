@@ -95,12 +95,17 @@ internal object SeedBrain {
 
     /** Signals several pairs share, so each pair reads them through exact recurrent weights. */
     private fun relays(b: Builder) {
-        // Trail present: TRAIL_L + TRAIL_R above 0.75 (each antenna at about 0.6 of the trail
-        // threshold concentration). The steep slope (20) saturates the unit within 0.25 either
-        // side, so the trail sums 0.5 and 1.0 read clearly off and on.
+        // Trail present, latched with the thresholds of the following state (Actions.follow): it
+        // turns on when TRAIL_L + TRAIL_R reaches 0.667 (each antenna at half the threshold
+        // concentration T, so T for the two together) and, through its self-connection (4.06),
+        // stays on until the sum falls below 0.261 (0.3 T together). The steep slope (20)
+        // saturates the unit within 0.25 either side. Task 8b: it used to switch at 0.75 with no
+        // latch (about 1.2 T), so a follower wandered on a trail until it read well above the
+        // threshold and wandered again at every dip below it.
         b.input(U_TRAIL_ON, Senses.TRAIL_L, 20f)
         b.input(U_TRAIL_ON, Senses.TRAIL_R, 20f)
-        b.input(U_TRAIL_ON, Senses.BIAS, -15f)
+        b.input(U_TRAIL_ON, Senses.BIAS, -9.28f)
+        b.recurrent(U_TRAIL_ON, U_TRAIL_ON, 4.06f)
         // Odour received from a nestmate in the last Contacts.MET_SECONDS: either flag turns it
         // fully on (8 - 4 = +4), none leaves it fully off (-4).
         b.input(U_ODOUR, Senses.MET_HONEYDEW, 8f)
@@ -135,15 +140,15 @@ internal object SeedBrain {
     /** Circuit 2 and 7b, 7c: steering while searching. */
     private fun search(b: Builder) {
         // Steer: trail, odour and nudge, open while searching. Trail: turn toward the stronger
-        // antenna, about 1.5 (L - R) / theta rad/s near the threshold, as the scripted gain of
-        // 3 (L - R) / (L + R) did. Odour (3): about 2.9 rad/s toward a plant or food 30 degrees off
-        // (sin 0.5), proportional below about 15 degrees, so the ant swings onto the bearing in
-        // well under a second and then holds it. Nudge (-3): a fresh nudge (0.8 to 1) turns at about
+        // antenna in proportion to the normalised difference (L - R) / (L + R) (spec 3.2, the
+        // TRAIL_DIFF input), 0.75 giving about 3 rad/s per unit, the scripted trailTurnGain of 3,
+        // and the same on a strong trail as on a faint one. Odour (3): about 2.9 rad/s toward a
+        // plant or food 30 degrees off (sin 0.5), proportional below about 15 degrees, so the ant
+        // swings onto the bearing in well under a second and then holds it. Nudge (-3): a fresh nudge (0.8 to 1) turns at about
         // 3 rad/s away from the dead end an oncoming tired forager came from, fading over
         // Contacts.NUDGE_SECONDS as the nudge input decays.
         b.whenOn(U_STEER, U_STEER_MIRROR, U_SEARCH)
-        b.signal(U_STEER, U_STEER_MIRROR, Senses.TRAIL_L, 1.5f)
-        b.signal(U_STEER, U_STEER_MIRROR, Senses.TRAIL_R, -1.5f)
+        b.signal(U_STEER, U_STEER_MIRROR, Senses.TRAIL_DIFF, 0.75f)
         b.signal(U_STEER, U_STEER_MIRROR, Senses.HONEYDEW_SIN, 3f)
         b.signal(U_STEER, U_STEER_MIRROR, Senses.PREY_SIN, 3f)
         b.signal(U_STEER, U_STEER_MIRROR, Senses.NUDGE, -3f)
@@ -159,13 +164,22 @@ internal object SeedBrain {
         b.whenOff(U_WANDER, U_WANDER_MIRROR, U_ODOUR)
         b.recurrentSignal(U_WANDER, U_WANDER_MIRROR, U_NOISE, 2f)
         b.turn(U_WANDER, U_WANDER_MIRROR, 0.75f)
-        // Footprints repel only where a trail is present (the TRAIL_ON relay), however strong the
-        // trail. A footprint difference across the antennae of 0.6 turns about 2.7 rad/s away from
-        // the more walked side (2 per unit, the same scale as the trail gain), 0.2 about 1.5.
+        // On a trail (the TRAIL_ON relay), and only there, two more terms. Footprints repel,
+        // however strong the trail: a footprint difference across the antennae of 0.6 turns about
+        // 2 rad/s away from the more walked side, 0.2 about 0.8 (1 per unit; Task 8b halved it
+        // from 2, because home scent peaks along a busy trail, so its difference across the
+        // antennae pushes a follower off the trail's centre, and at 2 that push matched the
+        // trail's own steering). And an outward bias (HOME_SIN -0.5): a follower turns away from
+        // home, about 1.7 rad/s with home square to one side and nothing with home straight
+        // behind, so it walks out along the trail rather than back to the nest. This is path
+        // integration, which Lasius niger has (simulation reference section 4), doing what the
+        // scripted forager's keepOutward did; trails leave the nest outward, so away from home is
+        // along them.
         b.whenOn(U_FOOT, U_FOOT_MIRROR, U_SEARCH)
         b.whenOn(U_FOOT, U_FOOT_MIRROR, U_TRAIL_ON)
-        b.signal(U_FOOT, U_FOOT_MIRROR, Senses.FOOT_L, -2f)
-        b.signal(U_FOOT, U_FOOT_MIRROR, Senses.FOOT_R, 2f)
+        b.signal(U_FOOT, U_FOOT_MIRROR, Senses.FOOT_L, -1f)
+        b.signal(U_FOOT, U_FOOT_MIRROR, Senses.FOOT_R, 1f)
+        b.signal(U_FOOT, U_FOOT_MIRROR, Senses.HOME_SIN, -0.5f)
         b.turn(U_FOOT, U_FOOT_MIRROR, 0.5f)
     }
 
@@ -190,15 +204,26 @@ internal object SeedBrain {
         b.recurrentSignal(U_HOMING, U_HOMING_MIRROR, U_NOISE, 0.22f)
         b.turn(U_HOMING, U_HOMING_MIRROR, 0.5f)
         // Deposit: only at the desired fill (FULL); more right after feeding (near the food),
-        // less when crowded and on a trail that is already strong. The unit runs from about
-        // -0.9 without a full crop to +0.9 when full and freshly fed; DEPOSIT = 4 u - 0.5 maps
-        // that to 0.016 (below Outputs.DEPOSIT_MIN, nothing laid) and 0.96.
+        // less when crowded and on a trail that is already strong. A fresh, uncrowded forager's
+        // deposit is 0.30, a mark of 0.67 (a third of the trail threshold T at the default
+        // markAmount), so a trail reaches T only where several foragers lay over each other
+        // within the trail's lifetime: below about 75 workers trails barely form (Mailleux 2003,
+        // simulation reference section 2). Without a full crop the unit sits near -1 and the
+        // deposit at 0.011, below Outputs.DEPOSIT_MIN (nothing laid). Crowding (CONTACT_RATE
+        // 0.67, about 10 contacts in 10 s) cuts the deposit to 0.16, about half, and a strong
+        // trail (each antenna at 4 T) to 0.20, two thirds (Czaczkes 2013: up to 5.6 times less
+        // when crowded; high pheromone suppresses deposition). The bias goes through the BIAS
+        // input so personal variation keeps the threshold. Task 8b lowered the deposit (fresh
+        // 0.96, a mark above T on its own, and crowding and saturation cuts of -1.5 and -0.75
+        // each) because a 30-forager colony kept its trails at several times T, and the cuts
+        // held a 150-forager colony's trails at about the same strength, so colony size made no
+        // difference to recruitment.
         b.input(U_DEPOSIT, Senses.FULL, 3f)
         b.input(U_DEPOSIT, Senses.FED_RECENT, 1f)
-        b.input(U_DEPOSIT, Senses.CONTACT_RATE, -1.5f)
-        b.input(U_DEPOSIT, Senses.TRAIL_L, -0.75f)
-        b.input(U_DEPOSIT, Senses.TRAIL_R, -0.75f)
-        b.bias(U_DEPOSIT, -2.5f)
+        b.input(U_DEPOSIT, Senses.CONTACT_RATE, -0.32f)
+        b.input(U_DEPOSIT, Senses.TRAIL_L, -0.08f)
+        b.input(U_DEPOSIT, Senses.TRAIL_R, -0.08f)
+        b.input(U_DEPOSIT, Senses.BIAS, -4.09f)
         b.output(Outputs.DEPOSIT, U_DEPOSIT, 4f)
         b.outputBias(Outputs.DEPOSIT, -0.5f)
         // Enter at the entrance when homeward (logit +6); a searcher passing by does not (-6).
