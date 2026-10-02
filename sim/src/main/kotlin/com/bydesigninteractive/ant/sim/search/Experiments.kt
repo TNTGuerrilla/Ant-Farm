@@ -130,8 +130,9 @@ object Experiments {
 
     /**
      * Depletion switch: a rich feeder with [DEPLETION_LOADS] trips and a poorer one that never
-     * runs out, both at 250 mm. After the rich one is gone (within 60 minutes), feeds at the
-     * second in the next 10 minutes per feed at the first in the 10 minutes before; 0 if it never ran out.
+     * runs out, both at 250 mm. After the rich one is gone (within 60 minutes; at the tick of its
+     * last feed), feeds at the second in the next 10 minutes per feed at the first in the 10
+     * minutes before; 0 if it never ran out.
      */
     fun depletion(genome: Genome?, seed: Long, scale: Float = 1f): Double {
         val w = Scenarios.feeders(
@@ -145,7 +146,10 @@ object Experiments {
         while ((gone < 0L && m < limit) || (gone >= 0L && w.tick < gone + window)) {
             run(w, 1)
             m++
-            if (gone < 0L && w.surface.foods.none { it.id == 0 }) gone = w.tick
+            // The rich feeder went with its last load: the tick of its last feed, not the minute's end.
+            if (gone < 0L && w.surface.foods.none { it.id == 0 }) {
+                gone = w.feedEvents.lastOrNull { it.foodId == 0 }?.tick ?: w.tick
+            }
         }
         if (gone < 0L) return 0.0
         val before = w.feedEvents.count { it.foodId == 0 && it.tick >= gone - window && it.tick < gone }

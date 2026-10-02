@@ -12,7 +12,20 @@ import kotlin.math.max
  *
  * The drift target ([TURN_BIAS_MAX]) is not from the field data: it keeps a searcher that turns
  * steadily one way (walking in circles) from scoring as a tortuous, realistic search. 0.15 rad/s
- * is a full circle in about 40 s; a balanced random search averages near zero over 30 s.
+ * is a full circle in about 40 s. A balanced random search measures about 0.07 rad/s over the
+ * 120 s or more of searching each forager needs to count ([Observer]).
+ *
+ * Naive following ([NAIVE_FOLLOWING]) is the share of never-fed foragers that take the marked
+ * branch at a Y ([YChoice]), Gruter 2011's 62 to 70%. Its tolerance is 0.06, not the 0.04 that
+ * half the field range would give: the screening pools about 300 choices (100 releases on each
+ * of 3 seeds), whose binomial standard error at 0.66 is about 0.027, so 0.06 is about two
+ * standard errors and a variant is not ranked on sampling noise. Fewer choices would need 0.08.
+ *
+ * The forager share ([FORAGER_SHARE]) is unscored in M2a: worker roles are fixed until M3
+ * (castes), so the 10 to 25% target (Planckaert 2019) is a caste ratio the brain cannot change;
+ * the controller and owner were told (2026-10-02). The [Observer] still measures it and reports
+ * print it, and on the starter world (60 foragers of 80 workers) a genome could only lower it by
+ * keeping foragers idle in the nest.
  */
 object Litmus {
     const val MISSING = 5.0
@@ -30,10 +43,10 @@ object Litmus {
     const val NEVER_LAYING = 0.14
     const val NEVER_LAYING_TOLERANCE = 0.07
     const val NAIVE_FOLLOWING = 0.66 // 62 to 70%
-    const val NAIVE_FOLLOWING_TOLERANCE = 0.04
+    const val NAIVE_FOLLOWING_TOLERANCE = 0.06
     const val STRAIGHTER_HOME_MIN = 0.1 // the search out is more tortuous than the way home
     const val STRAIGHTER_HOME_TOLERANCE = 0.1
-    const val FORAGER_SHARE = 0.175 // 10 to 25% of workers
+    const val FORAGER_SHARE = 0.175 // 10 to 25% of workers; unscored until M3, see above
     const val FORAGER_SHARE_TOLERANCE = 0.075
     const val TURN_BIAS_MAX = 0.15 // rad/s: searchers do not walk in circles
     const val TURN_BIAS_TOLERANCE = 0.1
@@ -51,7 +64,6 @@ object Litmus {
             "neverLaying" to near(m.neverLaying, NEVER_LAYING, NEVER_LAYING_TOLERANCE),
             "naiveFollowing" to near(m.naiveFollowing, NAIVE_FOLLOWING, NAIVE_FOLLOWING_TOLERANCE),
             "straighterHome" to atLeast(gap, STRAIGHTER_HOME_MIN, STRAIGHTER_HOME_TOLERANCE),
-            "foragerShare" to near(m.foragerShare, FORAGER_SHARE, FORAGER_SHARE_TOLERANCE),
             "turnBias" to atMost(m.meanAbsTurnBias, TURN_BIAS_MAX, TURN_BIAS_TOLERANCE),
         )
     }

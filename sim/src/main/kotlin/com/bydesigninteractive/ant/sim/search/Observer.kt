@@ -2,6 +2,7 @@ package com.bydesigninteractive.ant.sim.search
 
 import com.bydesigninteractive.ant.sim.DT
 import com.bydesigninteractive.ant.sim.World
+import com.bydesigninteractive.ant.sim.ant.Ant
 import com.bydesigninteractive.ant.sim.ant.AntState
 import com.bydesigninteractive.ant.sim.ant.Role
 import com.bydesigninteractive.ant.sim.ant.Space
@@ -20,10 +21,16 @@ enum class Death { NONE, NO_FEED, NO_RETURN, NOT_MOVING, EDGE_PILE, NON_NUMERIC 
  * how. It reads ant fields only and never draws from the world's generator, so watching never
  * changes a run. The colony's size must not change after it is created.
  *
- * The trail readings it uses for naive following are the ants' own antenna readings
- * (senseL and senseR), which each ant refreshes at its brain evaluation, every other tick.
+ * Naive trail following is not measured here: never-fed searchers on the starter world meet too
+ * few trails (about 5 per seed), so it has its own trial, [YChoice].
+ *
  * The drift measure ([Measurements.meanAbsTurnBias]) follows each searching forager's compass
- * heading tick by tick in 30 s windows and keeps the size of its net turn per second.
+ * heading tick by tick and adds up its signed turn and its time over all its search bouts
+ * together, leaving out ticks on a trail, on an obstacle detour, and on or by a plant stem
+ * (where the turn is the trail's, the detour's or the climb's, not the search's). Each forager
+ * with at least 120 s of such searching gives |turn| / time; the measure is their mean. A
+ * searcher whose turns balance out has a floor of about 0.07 rad/s at 120 s from its random
+ * turns alone, half that of 30 s windows, so a steady bias stands out above it.
  */
 class Observer(private val w: World) {
     private val n = w.ants.size
@@ -41,8 +48,6 @@ class Observer(private val w: World) {
     private val everFed = BooleanArray(n)
     private val eligibleMm = DoubleArray(n)
     private val fullReturns = IntArray(n)
-    private val armed = BooleanArray(n) { true }
-    private val encounterStart = LongArray(n) { -1L }
     private val windowKind = IntArray(n)
     private val windowTicks = IntArray(n)
     private val windowLength = DoubleArray(n)
@@ -50,6 +55,7 @@ class Observer(private val w: World) {
     private val windowY = FloatArray(n)
     private val driftTicks = IntArray(n)
     private val driftTurn = DoubleArray(n)
+    private val lastNz = FloatArray(n)
 
     private var feedSum = 0.0
     private var feeds = 0
@@ -57,18 +63,14 @@ class Observer(private val w: World) {
     private var returns = 0
     private var unloadSum = 0.0
     private var unloadsSeen = 0
-    private var nearMarks = 0L
+    private var nearAmount = 0.0
     private var nearMm = 0.0
-    private var farMarks = 0L
+    private var farAmount = 0.0
     private var farMm = 0.0
-    private var encounters = 0
-    private var follows = 0
     private var outSum = 0.0
     private var outWindows = 0
     private var homeSum = 0.0
     private var homeWindows = 0
-    private var driftSum = 0.0
-    private var driftWindows = 0
     private var shareSum = 0.0
     private var shareSamples = 0
     private var movingSum = 0.0
@@ -82,7 +84,7 @@ class Observer(private val w: World) {
 
     fun afterTick() {
         val tick = w.tick
-        val theta = w.params.trailThreshold
+        val markAmount = w.params.markAmount
         val sample = tick % SAMPLE_TICKS == 0L
         var surfaceAnts = 0
         var walkers = 0
@@ -132,41 +134,22 @@ class Observer(private val w: World) {
                 sqrt((dx * dx + dy * dy + dz * dz).toDouble())
             } else 0.0
 
-            // Trail marks while full: overall, and near versus farther from the food.
+            // Trail marks while full: overall (a count), and the amount laid near versus farther
+            // from the food. The brain sets each mark's amount (markAmount times its deposit
+            // strength, Actions.deposit), so the near-food ratio weighs marks by it: counting marks
+            // alone gives about 1 for any brain that lays at all.
             val marks = a.marksLaid - lastMarks[i]
             if (surface && a.crop > 0f && a.crop >= a.desiredCrop) {
                 eligibleMm[i] += step
                 val sinceFed = Body.sinceFed(tick, a)
+                val amount = marks * markAmount * a.deposit.toDouble()
                 if (sinceFed < NEAR_SECONDS) {
-                    nearMarks += marks
+                    nearAmount += amount
                     nearMm += step
                 } else if (sinceFed < 2 * NEAR_SECONDS) {
-                    farMarks += marks
+                    farAmount += amount
                     farMm += step
                 }
-            }
-
-            // Naive trail following.
-            if (surface && a.role == Role.FORAGER && !everFed[i] && state == AntState.SEARCH) {
-                val r = a.senseL + a.senseR
-                if (encounterStart[i] >= 0L) {
-                    if (r < theta / 2f) {
-                        encounters++
-                        encounterStart[i] = -1L
-                        armed[i] = true
-                    } else if (tick - encounterStart[i] >= FOLLOW_TICKS) {
-                        encounters++
-                        follows++
-                        encounterStart[i] = -1L
-                    }
-                } else if (armed[i] && r >= theta) {
-                    encounterStart[i] = tick
-                    armed[i] = false
-                } else if (r < theta / 2f) {
-                    armed[i] = true
-                }
-            } else {
-                encounterStart[i] = -1L
             }
 
             // Straightness in 5 s windows, outbound searching versus homeward.
@@ -204,22 +187,16 @@ class Observer(private val w: World) {
                 }
             }
 
-            // Drift: the net signed turn of a searching forager over 30 s windows.
-            if (kind == OUT && lastSpace[i] == space && lastState[i] == AntState.SEARCH.ordinal) {
+            // Drift: the signed turn of a searching forager this tick, added to its total over
+            // all its search bouts, unless the turn was the trail's, a detour's or a stem's.
+            if (kind == OUT && lastSpace[i] == space && lastState[i] == AntState.SEARCH.ordinal &&
+                !a.onTrail && !detouring(a, tick) && a.nz >= STEEP_NZ && lastNz[i] >= STEEP_NZ && !byStem(a)
+            ) {
                 var d = (a.heading - lastHeading[i]).toDouble()
                 while (d > PI) d -= 2 * PI
                 while (d < -PI) d += 2 * PI
                 driftTurn[i] += d
                 driftTicks[i]++
-                if (driftTicks[i] >= DRIFT_TICKS) {
-                    driftSum += abs(driftTurn[i]) / (DRIFT_TICKS * DT)
-                    driftWindows++
-                    driftTicks[i] = 0
-                    driftTurn[i] = 0.0
-                }
-            } else {
-                driftTicks[i] = 0
-                driftTurn[i] = 0.0
             }
 
             if (sample) {
@@ -243,6 +220,7 @@ class Observer(private val w: World) {
             lastY[i] = a.y
             lastZ[i] = a.z
             lastHeading[i] = a.heading
+            lastNz[i] = a.nz
         }
         if (sample) {
             shareSum += foragersOut.toDouble() / n
@@ -267,13 +245,35 @@ class Observer(private val w: World) {
         return Death.NONE
     }
 
+    /** True if [a] walked an obstacle detour in the tick just stepped (`Detour.walking`, read one tick on). */
+    private fun detouring(a: Ant, tick: Long): Boolean = a.detourLeft > 0f && a.detourTick == tick - 1
+
+    /** True if [a] is within [STEM_MM] of an aphid plant's stem, where it climbs (`Primitives.faceUpStem`). */
+    private fun byStem(a: Ant): Boolean {
+        val foods = w.surface.foods
+        for (k in foods.indices) {
+            val f = foods[k]
+            if (!f.hasStem) continue
+            val dx = f.x - a.x
+            val dy = f.y - a.y
+            if (dx * dx + dy * dy < STEM_MM * STEM_MM) return true
+        }
+        return false
+    }
+
     fun measurements(): Measurements {
         var marks = 0L
         var mm = 0.0
         var fullReturners = 0
         var never = 0
+        var driftSum = 0.0
+        var drifters = 0
         for (a in w.ants) {
             val i = a.id
+            if (driftTicks[i] >= DRIFT_MIN_TICKS) {
+                driftSum += abs(driftTurn[i]) / (driftTicks[i] * DT)
+                drifters++
+            }
             if (a.marksLaid > 0) {
                 marks += a.marksLaid
                 mm += eligibleMm[i]
@@ -288,21 +288,21 @@ class Observer(private val w: World) {
             returnSeconds = if (returns > 0) returnSum / returns else null,
             unloadSeconds = if (unloadsSeen > 0) unloadSum / unloadsSeen else null,
             marksPer5cm = if (mm > 0.0) marks / mm * 50.0 else null,
-            nearFoodRatio = if (nearMm > 0.0 && farMm > 0.0 && farMarks > 0L) (nearMarks / nearMm) / (farMarks / farMm) else null,
+            nearFoodRatio = if (nearMm > 0.0 && farMm > 0.0 && farAmount > 0.0) (nearAmount / nearMm) / (farAmount / farMm) else null,
             neverLaying = if (fullReturners > 0) never.toDouble() / fullReturners else null,
-            naiveFollowing = if (encounters > 0) follows.toDouble() / encounters else null,
             straightOut = if (outWindows > 0) outSum / outWindows else null,
             straightHome = if (homeWindows > 0) homeSum / homeWindows else null,
             foragerShare = if (shareSamples > 0) shareSum / shareSamples else null,
-            meanAbsTurnBias = if (driftWindows > 0) driftSum / driftWindows else null,
+            meanAbsTurnBias = if (drifters > 0) driftSum / drifters else null,
         )
     }
 
     private companion object {
         const val SAMPLE_TICKS = 200L
-        const val FOLLOW_TICKS = 60L // 3 s
         const val WINDOW_TICKS = 100 // 5 s
-        const val DRIFT_TICKS = 600 // 30 s
+        const val DRIFT_MIN_TICKS = 2400 // 120 s of searching, all bouts together
+        const val STEEP_NZ = 0.5f // steeper than this is a stem or rock wall, where the compass heading means little
+        const val STEM_MM = 10f // this close to a stem (horizontally) the ant may be turned to face up it
         const val MIN_WINDOW_MM = 20.0
         const val NEAR_SECONDS = 20f
         const val EDGE_MM = 50f

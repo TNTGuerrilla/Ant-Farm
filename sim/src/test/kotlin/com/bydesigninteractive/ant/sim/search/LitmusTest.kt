@@ -2,6 +2,7 @@ package com.bydesigninteractive.ant.sim.search
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class LitmusTest {
     private val onTarget = Measurements(
@@ -18,8 +19,17 @@ class LitmusTest {
     @Test
     fun theScoreCountsTolerances() {
         assertEquals(1.0, Litmus.score(onTarget.copy(feedSeconds = 75.0)), 1e-9)
-        assertEquals(2.0, Litmus.score(onTarget.copy(naiveFollowing = 0.58)), 1e-9)
-        assertEquals(3.0, Litmus.score(onTarget.copy(feedSeconds = 45.0, foragerShare = 0.325)), 1e-9)
+        assertEquals(2.0, Litmus.score(onTarget.copy(naiveFollowing = 0.54)), 1e-9)
+        assertEquals(2.0, Litmus.score(onTarget.copy(feedSeconds = 45.0, unloadSeconds = 75.0)), 1e-9)
+    }
+
+    /** Worker roles are fixed until M3, so the forager share is measured but not scored. */
+    @Test
+    fun theForagerShareIsUnscored() {
+        assertEquals(0.0, Litmus.score(onTarget.copy(foragerShare = 0.7)), 1e-9)
+        assertEquals(0.0, Litmus.score(onTarget.copy(foragerShare = null)), 1e-9)
+        assertTrue(Litmus.parts(onTarget).none { it.first == "foragerShare" })
+        assertTrue(onTarget.values().any { it.first == "foragerShare" })
     }
 
     @Test
@@ -51,6 +61,17 @@ class LitmusTest {
         val m = Measurements.mean(listOf(onTarget, onTarget.copy(feedSeconds = 80.0, returnSeconds = null)))
         assertEquals(70.0, m.feedSeconds!!, 1e-9)
         assertEquals(40.0, m.returnSeconds!!, 1e-9)
-        assertEquals(11, m.values().size)
+        assertEquals(12, m.values().size)
+    }
+
+    /** The Y-choice counts pool over seeds: the share over all choices, not the mean of the shares. */
+    @Test
+    fun theMeanPoolsTheYChoices() {
+        val m = Measurements.mean(listOf(
+            onTarget.copy(naiveFollowing = 0.5, naiveChoices = 100.0),
+            onTarget.copy(naiveFollowing = 0.8, naiveChoices = 50.0),
+        ))
+        assertEquals(90.0 / 150.0, m.naiveFollowing!!, 1e-9)
+        assertEquals(150.0, m.naiveChoices!!, 1e-9)
     }
 }
