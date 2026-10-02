@@ -104,7 +104,8 @@ class LitmusTest {
         assertEquals(1.0, parts.getValue("gruterSmall"), 1e-9)
         assertEquals(1.0, parts.getValue("gruterLarge"), 1e-9)
         assertEquals(1.0, parts.getValue("gruterBusier"), 1e-9)
-        assertEquals(0.0, parts.getValue("gruterCrowded"), 1e-9) // mean 0.5
+        // Per seed: 0.9 scores 0 and 0.1 scores 2, so the failing seed still counts (mean 1).
+        assertEquals(1.0, parts.getValue("gruterCrowded"), 1e-9)
         assertEquals(1.0, parts.getValue("depletion"), 1e-9)
     }
 }

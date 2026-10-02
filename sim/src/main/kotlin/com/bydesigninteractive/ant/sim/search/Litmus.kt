@@ -98,8 +98,9 @@ object Litmus {
 
     /**
      * The gate terms in tolerance units: following with 30 foragers at most 0.15, with 150 at
-     * least 0.33, the busier share at least 0.7, the crowded loser's mean share at least 0.5 and
-     * the depletion ratio at least 0.5.
+     * least 0.33, the busier share at least 0.7, the crowded loser's share at least 0.5 (scored per
+     * seed and averaged, so one passing seed cannot hide a failing one; Gruter needs the switch on
+     * most seeds) and the depletion ratio at least 0.5.
      *
      * Added in M2a Task 10 to put selection pressure on the spec section 1 item 5 gate; a change
      * to spec 4.2/4.3, the owner was told.
@@ -108,7 +109,7 @@ object Litmus {
         "gruterSmall" to atMost(g.small, GATE_SMALL_MAX, GATE_SMALL_TOLERANCE),
         "gruterLarge" to atLeast(g.largeFollowing, GATE_LARGE_MIN, GATE_LARGE_TOLERANCE),
         "gruterBusier" to atLeast(g.busierShare, GATE_BUSIER_MIN, GATE_BUSIER_TOLERANCE),
-        "gruterCrowded" to atLeast(g.crowdedMean, GATE_CROWDED_MIN, GATE_CROWDED_TOLERANCE),
+        "gruterCrowded" to g.crowded.map { atLeast(it, GATE_CROWDED_MIN, GATE_CROWDED_TOLERANCE) }.average(),
         "depletion" to atLeast(g.depletion, GATE_DEPLETION_MIN, GATE_DEPLETION_TOLERANCE),
     )
 
