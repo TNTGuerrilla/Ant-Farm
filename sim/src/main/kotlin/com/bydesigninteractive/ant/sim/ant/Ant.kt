@@ -1,5 +1,6 @@
 package com.bydesigninteractive.ant.sim.ant
 
+import com.bydesigninteractive.ant.sim.brain.Action
 import com.bydesigninteractive.ant.sim.brain.Body
 import com.bydesigninteractive.ant.sim.world.FoodKind
 import com.bydesigninteractive.ant.sim.world.FoodSource
@@ -76,6 +77,9 @@ class Ant(val id: Int, val role: Role, val desiredCrop: Float, val laysTrail: Bo
     /** The kind of the last food this ant fed at: for the renderer, and for contacts while the crop is full. */
     var lastFoodKind: FoodKind? = null
 
+    /** Trail marks this ant has laid. */
+    var marksLaid = 0
+
     // M2a brain state, read by Senses and written by Body and Contacts (unused by the scripted ants).
     /** Energy reserves, 0 to 1: fall outside, refill in the nest and on feeding ([Body]). */
     var reserves = 1f
@@ -97,4 +101,11 @@ class Ant(val id: Int, val role: Role, val desiredCrop: Float, val laysTrail: Bo
     var metTick = Body.NEVER_TICK
     var nudge = 0f
     var nudgeLeft = 0f
+
+    /** The brain's current action (M2a), and its last read outputs: turn rate (rad/s, left positive), speed factor, deposit strength and go-out drive. */
+    var action = Action.WALK
+    var turnRate = 0f
+    var speedOut = 1f
+    var deposit = 0f
+    var goOut = 0f
 }

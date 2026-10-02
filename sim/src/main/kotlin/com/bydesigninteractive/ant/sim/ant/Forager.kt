@@ -1,7 +1,6 @@
 package com.bydesigninteractive.ant.sim.ant
 
 import com.bydesigninteractive.ant.sim.DT
-import com.bydesigninteractive.ant.sim.FeedEvent
 import com.bydesigninteractive.ant.sim.World
 import com.bydesigninteractive.ant.sim.world.FoodSource
 import kotlin.math.PI
@@ -21,7 +20,6 @@ import kotlin.math.sqrt
 internal object Forager {
     private const val HOME_VECTOR_DONE = 15f
     private const val OUTWARD_FROM = 30f
-    private const val STEM_WALL_NZ = 0.5f // steeper than this is still the stem wall
     private const val CROWD_CUT = 4.6f // up to 5.6x less deposition when crowded
 
     fun update(w: World, a: Ant) {
@@ -117,22 +115,12 @@ internal object Forager {
         if (a.crop > 0f) return false
         val onStem = s.sdf.stemAt(a.x, a.y, a.z, p.stemTouch)
         if (onStem != null) {
-            val dx = onStem.x - a.x
-            val dy = onStem.y - a.y
-            val dz = onStem.z - a.z
-            if (dx * dx + dy * dy + dz * dz <= onStem.radius * onStem.radius) {
+            if (Primitives.atCluster(a, onStem)) {
                 startFeeding(w, a, onStem)
                 return true
             }
             a.onTrail = false
-            // Up alone is ill defined on the sloping ground at the stem base (it can point away
-            // from the stem), so press toward the axis as well; on the stem wall that part is
-            // removed by the tangent projection and only the climb remains.
-            val ax = onStem.x - a.x
-            val ay = onStem.y - a.y
-            val ah = sqrt(ax * ax + ay * ay)
-            if (ah > 1e-3f) SurfaceWalk.faceDirection(a, ax / ah, ay / ah, 1f)
-            else SurfaceWalk.faceDirection(a, 0f, 0f, 1f)
+            Primitives.faceUpStem(a, onStem)
             SurfaceWalk.step(w, a, p.surfaceSpeed)
             return true
         }
@@ -147,10 +135,7 @@ internal object Forager {
     }
 
     private fun startFeeding(w: World, a: Ant, food: FoodSource) {
-        a.food = food
-        a.onTrail = false
-        a.speed = 0f
-        a.timer = w.params.feedSeconds
+        Primitives.startFeeding(w, a, food)
         a.state = AntState.FEED
     }
 
@@ -205,17 +190,7 @@ internal object Forager {
         a.speed = 0f
         a.timer -= DT
         if (a.timer > 0f) return
-        val food = a.food
-        if (food != null) {
-            a.crop = food.quality
-            a.lastFoodKind = food.kind
-            w.feedEvents += FeedEvent(w.tick, food.id)
-            if (food.loads != Int.MAX_VALUE) {
-                food.loads--
-                if (food.loads <= 0) w.surface.removeFood(food)
-            }
-        }
-        a.food = null
+        Primitives.finishFeeding(w, a)
         a.runLeft = 0f
         a.timer = 0f
         a.state = AntState.RETURN
@@ -233,9 +208,7 @@ internal object Forager {
             a.state = AntState.UNLOAD
             return
         }
-        if (s.sdf.stemAt(a.x, a.y, a.z, p.stemTouch) != null &&
-            (a.z > s.ground.height(a.x, a.y) + p.stemLeaveHeight || a.nz < STEM_WALL_NZ)
-        ) {
+        if (Primitives.onPlant(w, a)) {
             // Still on the plant (above the leave height, or on its steep base where a horizontal
             // homing heading points into the wall): come down the stem before homing.
             SurfaceWalk.faceDirection(a, 0f, 0f, -1f)
@@ -279,6 +252,6 @@ internal object Forager {
         val saturation = 1f / (1f + trail.get(a.x, a.y, a.z) / p.saturationLevel)
         val crowd = w.surfaceIndex.countNear(a, p.crowdRadius)
         val crowding = 1f / (1f + CROWD_CUT * min(1f, crowd / p.crowdLevel.toFloat()))
-        trail.add(a.x, a.y, a.z, p.markAmount * saturation * crowding)
+        Primitives.deposit(w, a, p.markAmount * saturation * crowding)
     }
 }

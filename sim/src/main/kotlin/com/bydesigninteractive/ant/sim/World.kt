@@ -61,6 +61,10 @@ class World(
     // The brain's input vector (one simulation thread).
     internal val inputs = FloatArray(com.bydesigninteractive.ant.sim.brain.Senses.COUNT)
 
+    // Action masks and choice weights for the brain (one simulation thread).
+    internal val mask = BooleanArray(com.bydesigninteractive.ant.sim.brain.Action.COUNT)
+    internal val actionWeights = FloatArray(com.bydesigninteractive.ant.sim.brain.Action.COUNT)
+
     /** Recent feeding events, oldest first, for the last [FEED_WINDOW_TICKS] ticks. */
     val feedEvents = ArrayDeque<FeedEvent>()
 
@@ -82,6 +86,9 @@ class World(
     /** Obstacle detours started so far, by all ants (for tests and the detour golden). */
     var detoursStarted = 0
 
+    /** Trail marks laid so far, by all ants. */
+    var trailMarks = 0L
+
     var tick = 0L
         private set
     val seconds: Float get() = tick * DT
@@ -90,6 +97,7 @@ class World(
         val desired = params.desiredMin + rng.nextFloat() * (params.desiredMax - params.desiredMin)
         val lays = rng.nextFloat() >= params.nonLayerFraction
         val a = Ant(ants.size, role, desired, lays)
+        a.bornTick = tick
         placeAtEntrance(a)
         a.state = if (role == Role.FORAGER) AntState.EXIT else AntState.IDLE
         ants += a
