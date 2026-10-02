@@ -84,6 +84,37 @@ object Litmus {
 
     fun score(m: Measurements): Double = parts(m).sumOf { it.second }
 
+    // The gate terms ([Gates]), each aimed just past its pass threshold.
+    const val GATE_SMALL_MAX = 0.15
+    const val GATE_SMALL_TOLERANCE = 0.05
+    const val GATE_LARGE_MIN = 0.33 // the test needs above 0.30
+    const val GATE_LARGE_TOLERANCE = 0.05
+    const val GATE_BUSIER_MIN = 0.7
+    const val GATE_BUSIER_TOLERANCE = 0.1
+    const val GATE_CROWDED_MIN = 0.5
+    const val GATE_CROWDED_TOLERANCE = 0.2
+    const val GATE_DEPLETION_MIN = 0.5
+    const val GATE_DEPLETION_TOLERANCE = 0.15
+
+    /**
+     * The gate terms in tolerance units: following with 30 foragers at most 0.15, with 150 at
+     * least 0.33, the busier share at least 0.7, the crowded loser's mean share at least 0.5 and
+     * the depletion ratio at least 0.5.
+     *
+     * Added in M2a Task 10 to put selection pressure on the spec section 1 item 5 gate; a change
+     * to spec 4.2/4.3, the owner was told.
+     */
+    fun gateParts(g: Gates): List<Pair<String, Double>> = listOf(
+        "gruterSmall" to atMost(g.small, GATE_SMALL_MAX, GATE_SMALL_TOLERANCE),
+        "gruterLarge" to atLeast(g.largeFollowing, GATE_LARGE_MIN, GATE_LARGE_TOLERANCE),
+        "gruterBusier" to atLeast(g.busierShare, GATE_BUSIER_MIN, GATE_BUSIER_TOLERANCE),
+        "gruterCrowded" to atLeast(g.crowdedMean, GATE_CROWDED_MIN, GATE_CROWDED_TOLERANCE),
+        "depletion" to atLeast(g.depletion, GATE_DEPLETION_MIN, GATE_DEPLETION_TOLERANCE),
+    )
+
+    /** The score with the gate terms added (or [score] alone without them). */
+    fun score(m: Measurements, g: Gates?): Double = score(m) + (g?.let { gateParts(it).sumOf { p -> p.second } } ?: 0.0)
+
     /** The marked branch's share, scored only over [NAIVE_MIN_CHOICES] or more choices (else [NAIVE_MISSING]). */
     private fun naive(m: Measurements): Double {
         val choices = m.naiveChoices

@@ -91,4 +91,20 @@ class LitmusTest {
         assertEquals(90.0 / 150.0, m.naiveFollowing!!, 1e-9)
         assertEquals(150.0, m.naiveChoices!!, 1e-9)
     }
+
+    /** The gate terms score nothing just past each threshold and one per tolerance short of it. */
+    @Test
+    fun theGateTermsAimJustPastEachThreshold() {
+        val past = Gates(small = 0.1, largeFollowing = 0.34, busierShare = 0.9, crowded = listOf(0.9, 0.6), depletion = 0.6)
+        assertEquals(0.0, Litmus.gateParts(past).sumOf { it.second }, 1e-9)
+        assertEquals(Litmus.score(onTarget), Litmus.score(onTarget, past), 1e-9)
+        assertEquals(Litmus.score(onTarget), Litmus.score(onTarget, null), 1e-9)
+        val short = Gates(small = 0.2, largeFollowing = 0.28, busierShare = 0.6, crowded = listOf(0.9, 0.1), depletion = 0.35)
+        val parts = Litmus.gateParts(short).toMap()
+        assertEquals(1.0, parts.getValue("gruterSmall"), 1e-9)
+        assertEquals(1.0, parts.getValue("gruterLarge"), 1e-9)
+        assertEquals(1.0, parts.getValue("gruterBusier"), 1e-9)
+        assertEquals(0.0, parts.getValue("gruterCrowded"), 1e-9) // mean 0.5
+        assertEquals(1.0, parts.getValue("depletion"), 1e-9)
+    }
 }

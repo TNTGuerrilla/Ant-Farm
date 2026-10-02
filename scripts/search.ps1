@@ -8,7 +8,13 @@
     builds the search's classpath with Gradle, starts the search JVM with its processor affinity
     held to those processors and below-normal priority, and waits for it. Workers default to the
     P-core thread count minus two (14 on the owner's i9-12900K), which leaves one P-core and all
-    E-cores free. The report and genomes go to -Out (build/search by default).
+    E-cores free. The report and genomes go to -Out (build/search by default). -GateTop N runs the
+    screening's gate terms on only the best N viable variants of each generation (0: all of them).
+
+    The affinity and priority are applied just after the JVM starts (Start-Process cannot start a
+    process with them), so the JVM's first few milliseconds of startup may run on any core. A
+    process affinity covers all its threads, those already running included, so from then on the
+    whole JVM runs on the P-cores only.
 
 .EXAMPLE
     .\scripts\search.ps1
@@ -23,6 +29,7 @@ param(
     [int]$Keep = 8,
     [int]$Minutes = 20,
     [int]$Full = 5,
+    [int]$GateTop = 0,
     [double]$FullScale = 1.0,
     [int]$Workers = 0,
     [string]$Out = "build/search",
@@ -105,8 +112,9 @@ $javaArgs = @(
     "-Xmx$Heap", "-cp", "`"$cp`"", "com.bydesigninteractive.ant.sim.search.SearchMainKt",
     "--generations", $Generations, "--population", $Population, "--keep", $Keep,
     "--minutes", $Minutes, "--full", $Full, "--full-scale", $FullScale.ToString($invariant),
-    "--workers", $Workers, "--out", $Out
+    "--gate-top", $GateTop, "--workers", $Workers, "--out", "`"$Out`""
 )
+# Affinity and priority are set just after the start; they cover every thread of the JVM.
 $p = Start-Process -FilePath $java -ArgumentList $javaArgs -WorkingDirectory $root -NoNewWindow -PassThru
 $null = $p.Handle # hold the handle so the exit code can be read after the exit
 $p.ProcessorAffinity = [IntPtr]$mask
