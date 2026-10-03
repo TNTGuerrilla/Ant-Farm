@@ -48,11 +48,11 @@ class FingerprintTest {
     }
 
     // Re-recorded in M2a Task 8 (every ant runs the instinct brain) and 8b (trail following), 8c
-    // (the exit trail choice as a brain sense, the homeward deposit), and 8d (the deposit's
-    // saturating cut).
+    // (the exit trail choice as a brain sense, the homeward deposit), 8d (the deposit's
+    // saturating cut), and 11a (the exit choice on a trail, feeding places, the NO_ROOM sense).
     private companion object {
-        const val STARTER = "sum=578529.7944118922 trail=1 home=73 trailMax=0.10524576 homeMax=0.90318245 feeds=2 unloads=0 ants=80 rng=-7086934034764895650"
-        const val DETOUR = "sum=527236.6094159535 trail=16 home=89 trailMax=1.8952755 homeMax=0.7395286 feeds=12 unloads=0 ants=80 rng=2558674974469211134"
-        const val COLONY = "sum=7196872.810666364 trail=0 home=30 trailMax=0.0 homeMax=2.681898 feeds=0 unloads=0 ants=1000 rng=4266499480178696266"
+        const val STARTER = "sum=577432.2736606215 trail=15 home=70 trailMax=0.8331259 homeMax=0.8433443 feeds=4 unloads=0 ants=80 rng=-4273712978007863882"
+        const val DETOUR = "sum=529957.1881607191 trail=16 home=82 trailMax=1.7595835 homeMax=0.676645 feeds=9 unloads=0 ants=80 rng=866696344843055294"
+        const val COLONY = "sum=7192236.6568238605 trail=0 home=32 trailMax=0.0 homeMax=2.702457 feeds=0 unloads=0 ants=1000 rng=8403816162952503309"
     }
 }

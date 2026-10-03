@@ -12,9 +12,9 @@ dependencies {
 }
 
 tasks.test {
-    // M2a Task 8: the seed brain does not yet pass the 8-seed Gruter test (see the M2a plan); the
-    // realism search's winner must pass it before it ships, and Task 11 removes this exclusion.
-    useJUnitPlatform { excludeTags("gruter") }
+    // GruterScenarioTest (8 seeds) is part of the suite again since M2a Task 11a, when the seed
+    // brain passed all four checks; :sim:gruterTest still runs it on its own.
+    useJUnitPlatform()
     maxHeapSize = "3g"
 }
 

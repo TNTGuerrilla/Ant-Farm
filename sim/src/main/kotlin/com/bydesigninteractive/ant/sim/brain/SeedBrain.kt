@@ -76,14 +76,30 @@ internal object SeedBrain {
     const val RING_TURN = 9.42f
 
     /**
-     * The exit pair's weight on the turn output, which sets how decisive the exit choice is: about
-     * 2.3 rad/s toward a strong trail 30 degrees off (0.5, the other pairs' weight, gave 2.9).
-     * Calibrated in Task 8c to the fork accuracy of the simulation reference (section 5: 74 to 83%
-     * per junction, Czaczkes 2017): with one strong trail (marks of 10, five times T, every 10 mm)
-     * leaving the entrance, 78% of foragers are out along it (within 45 degrees) 5 s later (25% with the pair off, by chance and by meeting the
-     * trail; 94% at 0.5). See the Task 8c report for the Gruter runs behind the choice.
+     * The exit pair's weight on the turn output, which sets how nonlinear the exit choice is:
+     * about 3.0 rad/s toward a strong trail 30 degrees off. Task 8c calibrated 0.35 (2.3 rad/s) to
+     * Czaczkes 2017's fork accuracy with the pair shut on a trail. Task 11a keeps the pair open on
+     * a trail (see [exitChoice]) and raises the weight 1.5 times, to 0.525: the brain diagnosis of
+     * 2026-10-02 measured the choice between two live trails at gains 1 to 2 of 0.35 and found the
+     * exponent n of Deneubourg's (k + s)^n rising smoothly from about 1 to about 3; 1.5 gives n of
+     * 1.7 to 2.0 at every ratio from 1.5 : 1 to 8 : 2 (Deneubourg's n is about 2) with 82% on the
+     * stronger trail at 4 : 1 (Czaczkes 2017: 74 to 83% per junction).
      */
-    const val RING_OUT = 0.35f
+    const val RING_OUT = 0.525f
+
+    /**
+     * NO_ROOM's weight on the SEARCH (minus) and HOME (plus) modes: 40 takes a fresh forager
+     * (reserves 1, SEARCH at +28, HOME at -28) to SEARCH -12 and HOME +12, as far past the
+     * threshold as giving up tired does at reserves 0.5. Grounding (simulation reference section 5;
+     * research notes 04, 2.4 and 2.5): in Gruter 2012 a forager that finds the feeder crowded
+     * cannot feed, which is the negative feedback that lets crowded colonies switch within about
+     * 10 minutes; Mailleux 2000's foragers that cannot fill their desired volume go home without
+     * laying trail; Wendt 2020's foragers avoid occupied feeders. Going home puts the forager back
+     * through the exit choice, where the trails' relative strengths decide its next trip, instead
+     * of leaving it to queue at the full source: with the FEED mask alone, up to 47 of 150
+     * foragers waited around one full feeder (the Task 11a occupancy runs).
+     */
+    const val NO_ROOM_GIVE_UP = 40f
 
     fun genome(): Genome {
         val b = Builder()
@@ -103,6 +119,10 @@ internal object SeedBrain {
      * The three modes. Thresholds: a crop above about 0.175 of the desired fill (160 c = 80 - 52),
      * reserves at 0.65 (Body.TIRED, 52 / 80). The self-connection of 4 latches each mode across a
      * band of about 0.05 in reserves (0.625 to 0.675), so an ant near the threshold does not flicker.
+     *
+     * Task 11a: a forager turned away from a full source or from the place of a used-up one
+     * (NO_ROOM, held until it is back in the nest) ends its trip and goes home empty, as a tired
+     * one does ([NO_ROOM_GIVE_UP]).
      */
     private fun modes(b: Builder) {
         // SEARCH: an outbound forager. Any food in the crop, the digger role or being in the
@@ -111,6 +131,7 @@ internal object SeedBrain {
         b.input(U_SEARCH, Senses.DIGGER, -40f)
         b.input(U_SEARCH, Senses.IN_NEST, -40f)
         b.input(U_SEARCH, Senses.RESERVES, 80f)
+        b.input(U_SEARCH, Senses.NO_ROOM, -NO_ROOM_GIVE_UP)
         b.input(U_SEARCH, Senses.BIAS, -52f)
         b.recurrent(U_SEARCH, U_SEARCH, 4f)
         // HOME: on the surface with food, tired, or a digger without a pellet. A pellet (-80)
@@ -119,6 +140,7 @@ internal object SeedBrain {
         b.input(U_HOME, Senses.CROP, 160f)
         b.input(U_HOME, Senses.DIGGER, 40f)
         b.input(U_HOME, Senses.RESERVES, -80f)
+        b.input(U_HOME, Senses.NO_ROOM, NO_ROOM_GIVE_UP)
         b.input(U_HOME, Senses.IN_NEST, -200f)
         b.input(U_HOME, Senses.CARRYING, -80f)
         b.input(U_HOME, Senses.BIAS, 52f)
@@ -224,33 +246,39 @@ internal object SeedBrain {
     }
 
     /**
-     * Circuit 2 at the nest mouth (Task 8c): turn toward the strongest trail on the ring around
-     * the ant (Senses.ring), sensed only near the entrance, where all the colony's trails meet.
-     * The ring relay grades the pair's gate by the trail's strength: with no trail it is shut
-     * (the heading stays the random one the ant came out with); at half the threshold T it turns
-     * at under 0.1 rad/s toward a trail 30 degrees off, at T about 0.8 rad/s, and from twice T
-     * nearly the full 2.3 rad/s ([RING_OUT]). Open only while searching and not yet on a trail:
-     * once the antennae read the trail, the trail steering and the outward bias take over.
+     * Circuit 2 at the nest mouth (Task 8c, changed in Task 11a): turn toward the strongest trail
+     * on the ring around the ant (Senses.ring), sensed only near the entrance, where all the
+     * colony's trails meet. The ring relay grades the pair's gate by the trail's strength: with no
+     * trail it is shut (the heading stays the random one the ant came out with); at half the
+     * threshold T it turns at under 0.1 rad/s toward a trail 30 degrees off, at T about 1.2 rad/s,
+     * and from twice T nearly the full 3.0 rad/s ([RING_OUT]). Open while searching, on a trail or
+     * off it; homeward ants never read it.
      *
-     * Why this reproduces Deneubourg's choice (k + s)^n at the junction (simulation reference
-     * section 5: forks taken by relative trail strength, 74 to 83% per junction, Czaczkes 2017;
-     * collective choice, Beckers 1990), which Task 8b's innate exit rule computed directly: the
-     * turn always points at the strongest trail, but its strength grows steeply with s / (s + T)
-     * while the outbound walk's noise stays the same. A trail well below T barely bends the walk,
-     * so the ant leaves in a random direction (the k term); a strong one wins against the noise
-     * nearly every time; between, the ant reaches the trail it turned toward only some of the
-     * time, and the trail following (the TRAIL_DIFF steer) then holds whichever trail its
-     * antennae meet first. The choice is therefore graded and increasing in s, steeper than
-     * linear, like (k + s)^n, without any extra randomness: the only draw is the noise input.
-     * Measured with trails on both sides of the entrance (marks of 10 against 5 every 10 mm), 62%
-     * of foragers go out along the stronger and 34% along the weaker; 10 against 2, 71% and 19%.
+     * This is the junction choice of the simulation reference (section 5: forks taken by relative
+     * trail strength, 74 to 83% per junction, Czaczkes 2017; collective choice, Beckers 1990),
+     * Deneubourg's (k + s_A)^n / ((k + s_A)^n + (k + s_B)^n) with n about 2. The turn always
+     * points at the strongest trail on the ring and grows steeply with s / (s + T), while the
+     * outbound noise stays the same, so a trail well below T barely bends the walk (the k term), a
+     * strong one wins nearly every time, and between two live trails the stronger wins more often
+     * than in proportion. Measured with fixed trails on both sides of the entrance (150 foragers,
+     * 8 seeds, side taken at 80 mm): 1 : 1 splits 44 : 43; 1.5 : 1 gives 62 : 28; 2 : 1, 71 : 19;
+     * 4 : 1, 82 : 7; 8 : 2, 82 : 8. As an exponent n = ln(W / E) / ln(sW / sE), that is 1.7 to 2.0
+     * at every ratio, and about 10% of foragers leave along neither (ExitChoiceTest checks 4 : 1).
+     *
+     * Task 8c shut the pair once the antennae read a trail (whenOff TRAIL_ON). The 2026-10-02
+     * diagnosis found that this made the choice blind to strength: an ant leaving 6 mm from the
+     * entrance faces one of the converging trails, its antennae (10 mm ahead) catch it, the
+     * following state latches and the ring is shut before it chooses, so once both trails passed
+     * T the split stayed about 60 : 35 at any ratio (an n of 0.4 to 1). Then a colony committed
+     * only by letting the losing trail fall below T, all or nothing, and had no live minority trail
+     * left to switch to. Following itself (the TRAIL_DIFF steer) stays strength-blind, as Perna 2012's
+     * Weber law has it; the nonlinearity lives at the junction.
      * The pair is odd in RING_BEARING, so it never biases the turn when the ring is empty.
      */
     private fun exitChoice(b: Builder) {
         b.input(U_RING, Senses.RING, RING_SLOPE)
         b.input(U_RING, Senses.BIAS, -RING_SLOPE * RING_MID)
         b.whenOn(U_RING_TURN, U_RING_TURN_MIRROR, U_SEARCH)
-        b.whenOff(U_RING_TURN, U_RING_TURN_MIRROR, U_TRAIL_ON)
         b.graded(U_RING_TURN, U_RING_TURN_MIRROR, U_RING, RING_GATE)
         b.signal(U_RING_TURN, U_RING_TURN_MIRROR, Senses.RING_BEARING, RING_TURN)
         b.turn(U_RING_TURN, U_RING_TURN_MIRROR, RING_OUT)

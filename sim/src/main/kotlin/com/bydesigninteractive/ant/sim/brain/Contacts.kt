@@ -14,8 +14,8 @@ import kotlin.math.max
  * (about an antenna's reach); touching the same nestmate on consecutive checks counts once. Each
  * contact adds 1 to a count that decays with a [RATE_SECONDS] time constant (the contact rate),
  * and records whether the nestmate was a successful forager (carrying food) and which food odour
- * it carried, for [MET_SECONDS]. On the surface, an oncoming forager that gave up (tired, empty)
- * leaves a nudge: the bearing of the direction it came from, its dead end, for [NUDGE_SECONDS].
+ * it carried, for [MET_SECONDS]. On the surface, an oncoming forager that gave up (tired and
+ * empty, or turned away from a full or used-up source, Task 11a) leaves a nudge: the bearing of the direction it came from, its dead end, for [NUDGE_SECONDS].
  *
  * [update] must run once per tick for every ant: the decay, and the rule that the same nestmate
  * on consecutive checks counts once, both assume it.
@@ -50,7 +50,7 @@ internal object Contacts {
         a.metSuccess = loaded && other.role == Role.FORAGER
         a.metHoneydew = loaded && other.lastFoodKind == FoodKind.HONEYDEW
         a.metPrey = loaded && other.lastFoodKind == FoodKind.PREY
-        if (a.space == Space.SURFACE && other.role == Role.FORAGER && !loaded && other.reserves < Body.TIRED &&
+        if (a.space == Space.SURFACE && other.role == Role.FORAGER && !loaded && (other.reserves < Body.TIRED || other.turnedAway) &&
             a.fx * other.fx + a.fy * other.fy < ONCOMING
         ) {
             a.nudge = Senses.bearingSin(a, -other.fx, -other.fy)

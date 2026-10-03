@@ -82,6 +82,65 @@ class ActionsTest {
         assertSame(other, a.food) // free to pick a source again once the feed is over
     }
 
+    // Task 11a: feeding places. With every place taken a forager cannot feed and is turned away
+    // (Senses.NO_ROOM) until it is back in the nest; a place is free again when a feed ends.
+    @Test
+    fun aForagerAtAFullSourceCannotFeedAndIsTurnedAway() {
+        val w = world()
+        val first = onSurface(w, Role.FORAGER, 300f)
+        val food = FoodSource(9, FoodKind.HONEYDEW, first.x, first.y, 10f, 1f, bodyRadius = 0.3f)
+        assertEquals(1, food.capacity)
+        w.surface.addFood(food)
+        inputs(w, first)
+        Actions.begin(w, first, Action.FEED)
+        assertEquals(1, food.feeders)
+        assertTrue(food.full)
+        val late = onSurface(w, Role.FORAGER, 300f)
+        val x = inputs(w, late)
+        assertEquals(setOf(Action.WALK), allowed(w, late))
+        assertTrue(late.turnedAway)
+        assertEquals(1f, x[Senses.NO_ROOM])
+        repeat((w.params.feedSeconds / DT).toInt() + 1) { Actions.run(w, first) }
+        assertEquals(0, food.feeders)
+        assertEquals(setOf(Action.WALK, Action.FEED), allowed(w, late))
+        assertTrue(late.turnedAway, "turned away for the rest of the trip")
+        w.enterNest(late)
+        assertEquals(0f, inputs(w, late)[Senses.NO_ROOM])
+        assertTrue(!late.turnedAway)
+    }
+
+    // Task 11a: taking a source's last load removes it, and everyone else feeding there stops
+    // empty-handed and frees its place; the place where it was turns empty foragers away.
+    @Test
+    fun theLastLoadEndsEveryOtherFeedAtTheSource() {
+        val w = world()
+        val a = onSurface(w, Role.FORAGER, 300f)
+        val b = onSurface(w, Role.FORAGER, 300f)
+        val food = FoodSource(9, FoodKind.PREY, a.x, a.y, 10f, 0.8f, loads = 1, bodyRadius = 3f)
+        w.surface.addFood(food)
+        inputs(w, a)
+        Actions.begin(w, a, Action.FEED)
+        repeat(20) { Actions.run(w, a) } // a is 1 s ahead of b
+        inputs(w, b)
+        Actions.begin(w, b, Action.FEED)
+        assertEquals(2, food.feeders)
+        repeat((w.params.feedSeconds / DT).toInt()) {
+            Actions.run(w, a)
+            Actions.run(w, b)
+        }
+        assertEquals(0.8f, a.crop)
+        assertEquals(0f, b.crop)
+        assertEquals(Action.WALK, b.action)
+        assertEquals(null, b.food)
+        assertEquals(0, food.feeders)
+        assertTrue(w.surface.foods.none { it === food })
+        assertEquals(1, w.feedEvents.count { it.foodId == 9 })
+        // Where it was, nothing is left: an empty forager there is turned away.
+        val late = onSurface(w, Role.FORAGER, 300f)
+        assertEquals(1f, inputs(w, late)[Senses.NO_ROOM])
+        assertTrue(late.turnedAway)
+    }
+
     @Test
     fun aDiggerNeverFeeds() {
         val w = world()

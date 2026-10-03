@@ -78,7 +78,10 @@ internal object Actions {
         out[Action.WALK.ordinal] = true
         val forager = a.role == Role.FORAGER
         if (a.space == Space.SURFACE) {
-            out[Action.FEED.ordinal] = forager && a.crop <= 0f && a.food != null && x[Senses.AT_FOOD] > 0f
+            // A source whose feeding places are all taken cannot be fed at (FoodSource.capacity):
+            // the forager stays a searcher.
+            val food = a.food
+            out[Action.FEED.ordinal] = forager && a.crop <= 0f && food != null && !food.full && x[Senses.AT_FOOD] > 0f
             out[Action.ENTER.ordinal] = !a.carriesPellet && x[Senses.AT_ENTRANCE] > 0f
             out[Action.PICK_UP.ordinal] = !forager && !a.carriesPellet && w.surface.spoil.get(a.x, a.y) >= 1f
             out[Action.DROP.ordinal] = a.carriesPellet && distanceToEntrance(w, a) > w.params.entranceRadius + DROP_CLEARANCE
@@ -227,7 +230,7 @@ internal object Actions {
     private fun detouring(w: World, a: Ant): Boolean {
         val p = w.params
         val s = w.surface
-        if (a.role == Role.FORAGER && a.crop <= 0f && a.reserves >= Body.TIRED) {
+        if (a.role == Role.FORAGER && a.crop <= 0f && a.reserves >= Body.TIRED && !a.turnedAway) {
             val plant = s.nearestPlant(a.x, a.y, p.plantOdourRadius)
             if (plant != null) {
                 val dx = plant.x - a.x
@@ -243,7 +246,7 @@ internal object Actions {
     }
 
     private fun homeward(a: Ant): Boolean =
-        !a.carriesPellet && (a.role == Role.DIGGER || a.crop > 0f || a.reserves < Body.TIRED)
+        !a.carriesPellet && (a.role == Role.DIGGER || a.crop > 0f || a.reserves < Body.TIRED || a.turnedAway)
 
     /** The deposit primitive: marks at the species' rate per mm walked, scaled by the brain's strength (spec 3.4). */
     private fun deposit(w: World, a: Ant, speed: Float) {
@@ -303,8 +306,9 @@ internal object Actions {
 
     /**
      * Sets the display state the renderer, HUD and tests read from the action, then the following
-     * state ([follow]). An empty forager that is tired ([Body.TIRED]) is shown as returning: it has
-     * given up the search and is going home, as the scripted forager's give-up did.
+     * state ([follow]). An empty forager that is tired ([Body.TIRED]) or was turned away from a full
+     * source ([Ant.turnedAway]) is shown as returning: it has given up the trip and is going home,
+     * as the scripted forager's give-up did.
      */
     fun syncState(w: World, a: Ant) {
         a.state = if (a.space == Space.NEST) {
@@ -318,7 +322,7 @@ internal object Actions {
             a.action == Action.FEED -> AntState.FEED
             a.carriesPellet -> AntState.DUMP
             a.role == Role.DIGGER -> AntState.GO_HOME
-            a.crop > 0f || a.reserves < Body.TIRED -> AntState.RETURN
+            a.crop > 0f || a.reserves < Body.TIRED || a.turnedAway -> AntState.RETURN
             else -> AntState.SEARCH
         }
         follow(w, a)

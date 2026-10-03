@@ -211,8 +211,9 @@ class SeedBrainTest {
         assertTrue(relay(0.9f * t, 0f) < -0.9f, "one antenna below T")
     }
 
-    // Task 8c: the exit choice. Near the entrance, a searcher not yet on a trail turns toward the
-    // strongest trail on the ring, harder the stronger it is, and not at all with no trail.
+    // Task 8c: the exit choice. Near the entrance, a searcher turns toward the strongest trail on
+    // the ring, harder the stronger it is, and not at all with no trail. Task 11a raised the pair's
+    // weight 1.5 times (SeedBrain.RING_OUT).
     @Test
     fun aSearcherTurnsTowardTheStrongestTrailOnTheRing() {
         fun ring(strengthInT: Float, degrees: Float) = arrayOf(
@@ -226,21 +227,24 @@ class SeedBrainTest {
         val behind = turn(outputs(*ring(4f, 170f)))
         println("ring turn at 30 degrees: 0.5 T $weak, T $atT, 4 T $strong rad/s")
         assertTrue(abs(weak) < 0.2f, "half the threshold $weak")
-        assertTrue(atT > 0.5f && atT < 0.6f * strong, "at the threshold $atT, strong $strong")
-        assertTrue(strong > 2f, "four times the threshold $strong")
+        assertTrue(atT > 0.8f && atT < 0.6f * strong, "at the threshold $atT, strong $strong")
+        assertTrue(strong > 2.6f, "four times the threshold $strong")
         assertEquals(-strong, strongRight, 1e-4f)
         assertTrue(behind > strong, "a strong trail behind $behind")
         assertEquals(0f, turn(outputs(Senses.RING to 0f, Senses.RING_BEARING to 0f)), 1e-6f)
     }
 
+    // Task 11a: the ring turn stays on while the antennae read a trail, so an ant that met the
+    // weaker of two trails on leaving still turns toward the stronger one (the nonlinear junction
+    // choice); a homeward ant never reads it.
     @Test
-    fun theRingTurnActsOnlyWhileSearchingOffTheTrail() {
+    fun theRingTurnActsWhileSearchingOnOrOffATrail() {
         val ring = arrayOf(Senses.RING to 0.8f, Senses.RING_BEARING to 1f / 6f, Senses.RING_COS to 0.87f)
         val searching = turn(outputs(*ring))
         val onTrail = turn(outputs(*ring, Senses.TRAIL_L to 0.5f, Senses.TRAIL_R to 0.5f))
         val homeward = turn(outputs(*ring, *full))
-        assertTrue(searching > 2f, "searching $searching")
-        assertTrue(abs(onTrail) < 0.05f, "on a trail $onTrail")
+        assertTrue(searching > 2.6f, "searching $searching")
+        assertEquals(searching, onTrail, 0.05f, "on a trail $onTrail")
         assertTrue(abs(homeward) < 0.05f, "homeward $homeward")
     }
 
@@ -386,6 +390,22 @@ class SeedBrainTest {
         assertTrue(combined >= Outputs.DEPOSIT_MIN, "crowding 1, 3 T, 300 s: $combined")
         assertTrue(worst >= Outputs.DEPOSIT_MIN, "worst $worst")
         assertTrue(fresh / worst <= 5.6f, "fresh $fresh over worst $worst")
+    }
+
+    // Task 11a: a fresh forager turned away from a full source gives up its trip and goes home
+    // empty, as a tired one does: SEARCH off, HOME on, entering at the entrance, no trail laid.
+    @Test
+    fun aForagerTurnedAwayFromAFullSourceGoesHome() {
+        val b = genome.brain()
+        val h = FloatArray(genome.hidden)
+        val s = FloatArray(genome.hidden)
+        val o = FloatArray(genome.outputs)
+        repeat(5) { b.evaluate(inputs(), h, s, o) }
+        assertTrue(h[SeedBrain.U_SEARCH] > 0.9f, "searching first")
+        repeat(5) { b.evaluate(inputs(Senses.NO_ROOM to 1f), h, s, o) }
+        assertTrue(h[SeedBrain.U_SEARCH] < -0.9f && h[SeedBrain.U_HOME] > 0.9f, "turned away: search ${h[SeedBrain.U_SEARCH]}, home ${h[SeedBrain.U_HOME]}")
+        assertTrue(logit(o, Action.ENTER) >= 5f, "enters")
+        assertTrue(sig(o[Outputs.DEPOSIT]) < Outputs.DEPOSIT_MIN, "lays no trail")
     }
 
     @Test

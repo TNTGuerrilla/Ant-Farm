@@ -75,6 +75,13 @@ class Ant(val id: Int, val role: Role, val desiredCrop: Float, val laysTrail: Bo
     var digY = 0
     var food: FoodSource? = null
 
+    /**
+     * Turned away this trip (M2a Task 11a): the forager reached a source whose feeding places were
+     * all taken, or the place of one that has run out. Read by the brain as Senses.NO_ROOM, and an
+     * oncoming forager is nudged by it (Contacts); cleared when it enters the nest or feeds.
+     */
+    var turnedAway = false
+
     /** The kind of the last food this ant fed at: for the renderer, and for contacts while the crop is full. */
     var lastFoodKind: FoodKind? = null
 

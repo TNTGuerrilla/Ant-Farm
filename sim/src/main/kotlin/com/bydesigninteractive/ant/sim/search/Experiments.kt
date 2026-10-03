@@ -69,25 +69,34 @@ object Experiments {
         return GruterResult(small.map { it.get() }, large.map { it.get() }, crowded.map { it.get() })
     }
 
+    /** Gruter 2012's little-crowding feeder (9 holes), for the symmetry-breaking checks. */
+    private val LOW_CROWDING_RADIUS = Scenarios.feederRadius(Scenarios.GRUTER_LOW_CROWDING)
+
+    /** Gruter 2012's high-crowding feeder (1 hole), for the switching check. */
+    private val HIGH_CROWDING_RADIUS = Scenarios.feederRadius(Scenarios.GRUTER_HIGH_CROWDING)
+
     /** 30 foragers: 20 minutes, then the mean share of searching foragers on a trail over 10. */
     fun gruterSmall(genome: Genome?, seed: Long, scale: Float = 1f): Double {
-        val w = Scenarios.gruter(seed, foragers = 30, genome = genome)
+        val w = Scenarios.gruter(seed, foragers = 30, genome = genome, feederRadius = LOW_CROWDING_RADIUS)
         run(w, minutes(20, scale))
         return following(w, minutes(10, scale))
     }
 
     /** 150 foragers: 30 minutes, then following over 10 and the busier source's share of their feeds. */
     fun gruterLarge(genome: Genome?, seed: Long, scale: Float = 1f): Pair<Double, Double> {
-        val w = Scenarios.gruter(seed, foragers = 150, genome = genome)
+        val w = Scenarios.gruter(seed, foragers = 150, genome = genome, feederRadius = LOW_CROWDING_RADIUS)
         run(w, minutes(30, scale))
         val f = following(w, minutes(10, scale))
         val feeds = feedsSince(w, minutes(10, scale))
         return f to (feeds.values.maxOrNull() ?: 0).toDouble() / feeds.values.sum().coerceAtLeast(1)
     }
 
-    /** 150 foragers on 0.6 sources: 30 minutes, the loser becomes 1.0, 30 more; the loser's share of the last 10 minutes' feeds. */
+    /**
+     * 150 foragers on 0.6 sources with high crowding: 30 minutes, the loser becomes 1.0, 30 more;
+     * the loser's share of the last 10 minutes' feeds.
+     */
     fun gruterCrowded(genome: Genome?, seed: Long, scale: Float = 1f): Double {
-        val w = Scenarios.gruter(seed, foragers = 150, quality = 0.6f, genome = genome)
+        val w = Scenarios.gruter(seed, foragers = 150, quality = 0.6f, genome = genome, feederRadius = HIGH_CROWDING_RADIUS)
         run(w, minutes(30, scale))
         val feeds = feedsSince(w, minutes(10, scale))
         val loser = if ((feeds[0] ?: 0) <= (feeds[1] ?: 0)) 0 else 1
@@ -103,6 +112,9 @@ object Experiments {
     const val QUALITY_MIN = 0.85 // the richer feeder's share: about 90% or more
     const val DEPLETION_MIN = 0.5 // feeds at the second source after the first runs out, per feed before
     const val DEPLETION_LOADS = 400
+
+    /** Minutes after the rich source runs out over which the depletion switch is measured (Task 11a: 30, was 10). */
+    const val DEPLETION_AFTER = 30
 
     /** Distance choice, the open-ground double bridge: feeders at 250 and 500 mm; the near one's share of the last 10 minutes' feeds after 30. */
     fun distanceChoice(genome: Genome?, seed: Long, scale: Float = 1f): Double {
@@ -131,30 +143,44 @@ object Experiments {
     /**
      * Depletion switch: a rich feeder with [DEPLETION_LOADS] trips and a poorer one that never
      * runs out, both at 250 mm. After the rich one is gone (within 60 minutes; at the tick of its
-     * last feed), feeds at the second in the next 10 minutes per feed at the first in the 10
-     * minutes before; 0 if it never ran out.
+     * last feed), the second's feeding rate over the next [DEPLETION_AFTER] minutes per the
+     * first's rate over the 10 minutes before; 0 if it never ran out.
+     *
+     * Task 11a lengthened the window after from 10 minutes to 30 (the owner's decision of
+     * 2026-10-02); the setup and the threshold are unchanged. When the rich source runs out the
+     * poorer one has no trail: a colony that commits nonlinearly to the better of two sources
+     * leaves the poorer one almost unvisited (Beckers 1990; Gruter 2012: one feeder won 11 of 12
+     * trials at low crowding), so its foragers must first find it by searching and then build a
+     * trail to it from nothing. That takes longer than 10 minutes: in the 2026-10-02 diagnosis
+     * the second source still had no trail above threshold 15 minutes after the first ran out,
+     * even with shortened give-ups. Comparing rates keeps the measure what it was (feeds after
+     * per feed before), only averaged over a longer recovery.
      */
     fun depletion(genome: Genome?, seed: Long, scale: Float = 1f): Double {
         val w = Scenarios.feeders(
             seed, 150, distanceA = 250f, distanceB = 250f, qualityA = 1f, qualityB = 0.5f,
             loadsA = DEPLETION_LOADS, genome = genome,
         )
-        val window = minutes(10, scale) * TICKS_PER_MINUTE.toLong()
+        val beforeTicks = minutes(10, scale) * TICKS_PER_MINUTE.toLong()
+        val afterTicks = minutes(DEPLETION_AFTER, scale) * TICKS_PER_MINUTE.toLong()
         val limit = minutes(60, scale)
         var gone = -1L
+        var before = 0
         var m = 0
-        while ((gone < 0L && m < limit) || (gone >= 0L && w.tick < gone + window)) {
+        while ((gone < 0L && m < limit) || (gone >= 0L && w.tick < gone + afterTicks)) {
             run(w, 1)
             m++
             // The rich feeder went with its last load: the tick of its last feed, not the minute's end.
+            // The feeds before are counted now: World keeps only the last FEED_WINDOW_TICKS of them.
             if (gone < 0L && w.surface.foods.none { it.id == 0 }) {
-                gone = w.feedEvents.lastOrNull { it.foodId == 0 }?.tick ?: w.tick
+                val g = w.feedEvents.lastOrNull { it.foodId == 0 }?.tick ?: w.tick
+                gone = g
+                before = w.feedEvents.count { it.foodId == 0 && it.tick >= g - beforeTicks && it.tick < g }
             }
         }
         if (gone < 0L) return 0.0
-        val before = w.feedEvents.count { it.foodId == 0 && it.tick >= gone - window && it.tick < gone }
-        val after = w.feedEvents.count { it.foodId == 1 && it.tick >= gone && it.tick < gone + window }
-        return if (before == 0) 0.0 else after.toDouble() / before
+        val after = w.feedEvents.count { it.foodId == 1 && it.tick >= gone && it.tick < gone + afterTicks }
+        return if (before == 0) 0.0 else (after.toDouble() / afterTicks) / (before.toDouble() / beforeTicks)
     }
 
     /** The four open-ground experiments on every seed, in parallel. */

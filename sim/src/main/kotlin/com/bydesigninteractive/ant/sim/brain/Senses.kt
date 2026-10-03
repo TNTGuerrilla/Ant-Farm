@@ -37,9 +37,10 @@ internal object Senses {
      * retires m2a-1 genomes. m2a-3: the normalised trail difference [TRAIL_DIFF] was added after
      * [TRAIL_R], which moves every later input and retires m2a-2 genomes. m2a-4 (Task 8c): the
      * saturated total [TRAIL_SUM] and the trail ring ([RING_BEARING], [RING_COS], [RING]) follow
-     * [TRAIL_DIFF], which retires m2a-3 genomes.
+     * [TRAIL_DIFF], which retires m2a-3 genomes. m2a-5 (Task 11a): [NO_ROOM] follows [AT_FOOD],
+     * which retires m2a-4 genomes.
      */
-    const val LAYOUT = "m2a-4"
+    const val LAYOUT = "m2a-5"
 
     const val TRAIL_L = 0
     const val TRAIL_R = 1
@@ -76,13 +77,15 @@ internal object Senses {
     const val DIGGER = 32
     const val ON_STEM = 33
     const val AT_FOOD = 34
-    const val IN_NEST = 35
-    const val CARRYING = 36
-    const val DIG_SITE = 37
-    const val AT_ENTRANCE = 38
-    const val NOISE = 39
-    const val BIAS = 40
-    const val COUNT = 41
+    /** 1 once the forager has been turned away this trip ([Ant.turnedAway]): a full source, or a used-up one's place. */
+    const val NO_ROOM = 35
+    const val IN_NEST = 36
+    const val CARRYING = 37
+    const val DIG_SITE = 38
+    const val AT_ENTRANCE = 39
+    const val NOISE = 40
+    const val BIAS = 41
+    const val COUNT = 42
 
     val NAMES = arrayOf(
         "trailL", "trailR", "trailDiff", "trailSum", "ringBearing", "ringCos", "ring", "footL", "footR", "homeSin", "homeCos", "homeDist",
@@ -90,7 +93,7 @@ internal object Senses {
         "crop", "full", "reserves", "age", "temperature", "health", "damage",
         "contactRate", "returners", "metSuccess", "metHoneydew", "metPrey", "nudge",
         "fedRecent", "spoil", "roomNeeded", "digger",
-        "onStem", "atFood", "inNest", "carrying", "digSite", "atEntrance",
+        "onStem", "atFood", "noRoom", "inNest", "carrying", "digSite", "atEntrance",
         "noise", "bias",
     )
 
@@ -165,6 +168,7 @@ internal object Senses {
         if (a.nudgeLeft > 0f) x[NUDGE] = a.nudge * (a.nudgeLeft / Contacts.NUDGE_SECONDS)
         x[FED_RECENT] = exp(-Body.sinceFed(w.tick, a) / FED_TAU)
         x[DIGGER] = flag(a.role == Role.DIGGER)
+        x[NO_ROOM] = flag(a.turnedAway)
         x[CARRYING] = flag(a.carriesPellet)
         x[NOISE] = w.gaussian()
         x[BIAS] = 1f
@@ -231,7 +235,16 @@ internal object Senses {
         }
         // The source an ant is feeding at is its own until the feed ends: sensing never swaps or
         // drops it mid-feed (another source in reach, or the ant nudged off the cluster).
-        if (!feeding(a)) a.food = target
+        if (!feeding(a)) {
+            a.food = target
+            // An empty forager at a source with every feeding place taken is turned away for the
+            // rest of its trip (FoodSource.capacity; the FEED mask blocks it as well).
+            if (a.role == Role.FORAGER && a.crop <= 0f) {
+                if (target != null && target.full) a.turnedAway = true
+                // The place of a source that has run out: nothing is left to feed on (Task 11a, attempt 1).
+                if (target == null && atUsedUpSource(s, a)) a.turnedAway = true
+            }
+        }
         x[AT_FOOD] = flag(target != null)
         val spoil = s.spoil.get(a.x, a.y)
         x[SPOIL] = spoil / (spoil + SPOIL_HALF)
@@ -290,11 +303,25 @@ internal object Senses {
         x[RING] = top / (top + w.params.trailThreshold)
     }
 
+    /** True if the ant stands within the feeding reach of a ground source that has run out ([SurfaceMap.pastFoods]). */
+    private fun atUsedUpSource(s: com.bydesigninteractive.ant.sim.world.SurfaceMap, a: Ant): Boolean {
+        val past = s.pastFoods
+        for (i in past.indices) {
+            val f = past[i]
+            if (f.hasStem) continue
+            val dx = f.x - a.x
+            val dy = f.y - a.y
+            if (dx * dx + dy * dy <= f.radius * f.radius) return true
+        }
+        return false
+    }
+
     /** True while the ant is committed to a feed (the FEED primitive is running). */
     private fun feeding(a: Ant): Boolean = a.action == Action.FEED || Actions.busy(a)
 
     private fun nest(w: World, a: Ant, x: FloatArray) {
         a.food = null
+        a.turnedAway = false
         x[IN_NEST] = 1f
         val n = w.returners.count(w.tick).toFloat()
         x[RETURNERS] = n / (n + RETURNER_HALF)

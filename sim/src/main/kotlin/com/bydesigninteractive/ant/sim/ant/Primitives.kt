@@ -2,6 +2,7 @@ package com.bydesigninteractive.ant.sim.ant
 
 import com.bydesigninteractive.ant.sim.FeedEvent
 import com.bydesigninteractive.ant.sim.World
+import com.bydesigninteractive.ant.sim.brain.Action
 import com.bydesigninteractive.ant.sim.world.FoodSource
 import com.bydesigninteractive.ant.sim.world.Material
 import kotlin.math.abs
@@ -16,25 +17,58 @@ internal object Primitives {
     /** Steeper than this (|nz| below it) is still a stem's wall, not the ground at its base. */
     const val STEM_WALL_NZ = 0.5f
 
+    /** Starts a feed at [food], taking one of its feeding places (the FEED mask has checked one is free). */
     fun startFeeding(w: World, a: Ant, food: FoodSource) {
         a.food = food
         a.speed = 0f
         a.timer = w.params.feedSeconds
+        food.feeders++
+        a.turnedAway = false
     }
 
-    /** Ends a feed: the crop fills to the source's quality, the event is recorded and a load is used up. */
+    /**
+     * Ends a feed: the crop fills to the source's quality, the event is recorded, a load is used
+     * up and the feeding place is released. Taking the last load removes the source, and every
+     * other ant feeding there stops empty-handed ([abandonFeeds]).
+     */
     fun finishFeeding(w: World, a: Ant) {
         val food = a.food
         if (food != null) {
             a.crop = food.quality
             a.lastFoodKind = food.kind
             w.feedEvents += FeedEvent(w.tick, food.id)
+            releaseSpot(food)
             if (food.loads != Int.MAX_VALUE) {
                 food.loads--
-                if (food.loads <= 0) w.surface.removeFood(food)
+                if (food.loads <= 0) {
+                    w.surface.removeFood(food)
+                    abandonFeeds(w, food, a)
+                }
             }
         }
         a.food = null
+    }
+
+    /**
+     * Stops [a]'s feed without food and releases its place: for a source that has run out, and for
+     * any later way a feed can be cut short (an ant's death or removal must call this first).
+     */
+    fun stopFeeding(a: Ant) {
+        val food = a.food ?: return
+        releaseSpot(food)
+        a.food = null
+        a.timer = 0f
+        a.arrived = false
+        a.action = Action.WALK
+    }
+
+    /** Every other ant still feeding at [food], which [taker] has just emptied, stops (in the world's fixed ant order). */
+    private fun abandonFeeds(w: World, food: FoodSource, taker: Ant) {
+        for (b in w.ants) if (b !== taker && b.action == Action.FEED && b.food === food) stopFeeding(b)
+    }
+
+    private fun releaseSpot(food: FoodSource) {
+        if (food.feeders > 0) food.feeders--
     }
 
     /** True if [plant]'s aphid cluster is within its feeding reach of the ant. */
