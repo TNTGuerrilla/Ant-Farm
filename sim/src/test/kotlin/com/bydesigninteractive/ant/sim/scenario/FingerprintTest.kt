@@ -38,7 +38,7 @@ class FingerprintTest {
         kotlin.test.assertTrue(profile.sdfEvaluations > 0L)
     }
 
-    /** Seed 1's starter run has its first detour at tick 476 (measured in M2a Task 8d, with the instinct brain). */
+    /** Seed 1's starter run makes at least one detour within its 3000 ticks, with the instinct brain. */
     @Test
     fun theDetourRunMatchesItsFingerprint() {
         val w = Scenarios.starter(1)

@@ -4,6 +4,7 @@ import com.bydesigninteractive.ant.sim.DT
 import com.bydesigninteractive.ant.sim.World
 import com.bydesigninteractive.ant.sim.ant.Ant
 import com.bydesigninteractive.ant.sim.ant.AntState
+import com.bydesigninteractive.ant.sim.ant.Primitives
 import com.bydesigninteractive.ant.sim.ant.Role
 import com.bydesigninteractive.ant.sim.ant.Space
 import com.bydesigninteractive.ant.sim.ant.SurfaceWalk
@@ -140,6 +141,7 @@ object YChoice {
                 STRAYED -> strayed++
                 else -> timeouts++
             }
+            Primitives.stopFeeding(a) // a removed ant gives back any feeding place it holds
             w.ants.remove(a)
         }
         return YChoiceResult(marked, unmarked, strayed, timeouts, left)

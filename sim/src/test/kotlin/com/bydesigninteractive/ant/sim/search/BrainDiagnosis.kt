@@ -31,8 +31,8 @@ import kotlin.test.Test
  * depl and crowded (per-minute time series), occlarge, occcrowded and occdepl (feeder occupancy
  * per minute), gruter, all (the four experiments), depletion and equal.
  * BD_GENOMES picks genomes: seed, g4, g6, g7 (the first search's genomes in build/search) or
- * `proto:<part>+<part>` (see [Proto]). BD_SEEDS and BD_SCALE as in Experiments; BD_RADIUS
- * overrides the feeder radius of the occupancy runs.
+ * `proto:<part>+<part>` (see [Proto]). BD_SEEDS and BD_SCALE as in Experiments; BD_PLACES
+ * overrides the feeding places of the Gruter occupancy runs.
  */
 @EnabledIfEnvironmentVariable(named = "ANT_DIAG", matches = ".+")
 class BrainDiagnosis {
@@ -40,7 +40,7 @@ class BrainDiagnosis {
     private val genomes = (System.getenv("BD_GENOMES") ?: "seed").split(',').map { it.trim() }
     private val seeds = (System.getenv("BD_SEEDS") ?: "1,2,3").split(',').map { it.trim().toLong() }
     private val scale = (System.getenv("BD_SCALE") ?: "1").toFloat()
-    private val radiusEnv = System.getenv("BD_RADIUS")?.toFloat()
+    private val placesEnv = System.getenv("BD_PLACES")?.toInt()
 
     private fun genome(name: String): Genome = when (name) {
         "seed" -> SeedBrain.genome()
@@ -58,6 +58,7 @@ class BrainDiagnosis {
                 when (run) {
                     "diff" -> for (g in genomes) diff(g)
                     "exit" -> exitCurve(pool)
+                    "exitsides" -> exitSides(pool)
                     "occlarge", "occcrowded", "occdepl" -> {
                         val jobs = genomes.flatMap { g -> seeds.map { s -> pool.submit(Callable { occupancy(run, g, s) }) } }
                         for (j in jobs) println(j.get())
@@ -174,6 +175,21 @@ class BrainDiagnosis {
         }
     }
 
+    /** Per seed, the 4 : 1 and 2 : 1 exit counts with the stronger trail west and then east (stronger, weaker, neither). */
+    private fun exitSides(pool: java.util.concurrent.ExecutorService) {
+        val g = genome(genomes.first())
+        for ((hi, lo) in listOf(4f to 1f, 2f to 1f)) {
+            val jobs = seeds.map { s -> pool.submit(Callable { exitRun(g, s, hi, lo) to exitRun(g, s, lo, hi) }) }
+            for ((i, j) in jobs.withIndex()) {
+                val (wst, est) = j.get()
+                println(String.format(
+                    Locale.ROOT, "BD exitsides %.0f:%.0f seed %d: west-strong %d/%d/%d east-strong %d/%d/%d",
+                    hi, lo, seeds[i], wst[0], wst[1], wst[2], est[1], est[0], est[2],
+                ))
+            }
+        }
+    }
+
     private fun exitRun(g: Genome, seed: Long, westT: Float, eastT: Float): IntArray {
         val w = World(seed, AntParams(trailDecay = 0f), rocks = false, genome = g)
         w.predig(5)
@@ -224,15 +240,15 @@ class BrainDiagnosis {
     /** Per minute: feeds, mean and peak feeders, blocked arrivals (at a full source, not feeding) and searchers within 40 mm, per source. */
     private fun occupancy(run: String, gName: String, seed: Long): String {
         val g = genome(gName)
-        val radius = radiusEnv ?: Scenarios.feederRadius(if (run == "occlarge") Scenarios.GRUTER_LOW_CROWDING else Scenarios.GRUTER_HIGH_CROWDING)
+        val places = placesEnv ?: if (run == "occlarge") Scenarios.GRUTER_LOW_CROWDING else Scenarios.GRUTER_HIGH_CROWDING
         val w = when (run) {
-            "occlarge" -> Scenarios.gruter(seed, foragers = 150, genome = g, feederRadius = radius)
-            "occcrowded" -> Scenarios.gruter(seed, foragers = 150, quality = 0.6f, genome = g, feederRadius = radius)
+            "occlarge" -> Scenarios.gruter(seed, foragers = 150, genome = g, places = places)
+            "occcrowded" -> Scenarios.gruter(seed, foragers = 150, quality = 0.6f, genome = g, places = places)
             else -> Scenarios.feeders(seed, 150, 250f, 250f, qualityA = 1f, qualityB = 0.5f, loadsA = Experiments.DEPLETION_LOADS, genome = g)
         }
         val s = w.surface
         val foods = s.foods.toList()
-        val sb = StringBuilder("BD occ $run $gName r $radius seed $seed capacity ${foods.map { it.capacity }}\n")
+        val sb = StringBuilder("BD occ $run $gName places $places seed $seed capacity ${foods.map { it.capacity }}\n")
         sb.append("BD   min | feeds A B | mean feeders A B | peak A B | blocked A B | near A B\n")
         val total = if (run == "occlarge") 40 else 70
         for (minute in 1..total) {
@@ -282,8 +298,8 @@ class BrainDiagnosis {
     private fun series(run: String, gName: String, seed: Long): String {
         val g = genome(gName)
         val w = when (run) {
-            "large" -> Scenarios.gruter(seed, foragers = 150, genome = g, feederRadius = Scenarios.feederRadius(Scenarios.GRUTER_LOW_CROWDING))
-            "crowded" -> Scenarios.gruter(seed, foragers = 150, quality = 0.6f, genome = g, feederRadius = Scenarios.feederRadius(Scenarios.GRUTER_HIGH_CROWDING))
+            "large" -> Scenarios.gruter(seed, foragers = 150, genome = g, places = Scenarios.GRUTER_LOW_CROWDING)
+            "crowded" -> Scenarios.gruter(seed, foragers = 150, quality = 0.6f, genome = g, places = Scenarios.GRUTER_HIGH_CROWDING)
             else -> Scenarios.feeders(seed, 150, 250f, 250f, qualityA = 1f, qualityB = 0.5f, loadsA = Experiments.DEPLETION_LOADS, genome = g)
         }
         val sb = StringBuilder()

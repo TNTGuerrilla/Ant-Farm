@@ -97,7 +97,10 @@ internal object SeedBrain {
      * laying trail; Wendt 2020's foragers avoid occupied feeders. Going home puts the forager back
      * through the exit choice, where the trails' relative strengths decide its next trip, instead
      * of leaving it to queue at the full source: with the FEED mask alone, up to 47 of 150
-     * foragers waited around one full feeder (the Task 11a occupancy runs).
+     * foragers waited around one full feeder (the Task 11a occupancy runs). Gruter 2012's own
+     * model differs: there an ant that finds the feeder crowded searches elsewhere. The seed sends
+     * it home instead, the simpler start; the weight is an ordinary genome weight, so evolution
+     * can move it (a smaller one leaves the forager searching, its other drives deciding).
      */
     const val NO_ROOM_GIVE_UP = 40f
 

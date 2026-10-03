@@ -6,7 +6,6 @@ import com.bydesigninteractive.ant.sim.ant.Role
 import com.bydesigninteractive.ant.sim.brain.Genome
 import com.bydesigninteractive.ant.sim.world.FoodKind
 import com.bydesigninteractive.ant.sim.world.FoodSource
-import kotlin.math.PI
 
 /** Ready-made worlds for watching and for tests. */
 object Scenarios {
@@ -39,10 +38,10 @@ object Scenarios {
 
     /**
      * Gruter 2012: two identical feeders at equal [distance] on either side of the entrance, as
-     * food drops of [feederRadius] on gently rolling ground with no rocks, so the geometry matches
-     * M1's test. The ants run [genome] (the instinct brain unless given). The drop's size sets how
-     * many can feed at once (FoodSource.capacity): [GRUTER_LOW_CROWDING] and [GRUTER_HIGH_CROWDING]
-     * give the two conditions of the paper.
+     * small food drops on gently rolling ground with no rocks, so the geometry matches M1's test.
+     * The ants run [genome] (the instinct brain unless given). [places] sets how many can feed at
+     * each feeder at once (FoodSource.capacity), as Gruter's feeding holes did, independently of
+     * the drop's size; 0 derives it from the drop ([GRUTER_LOW_CROWDING], [GRUTER_HIGH_CROWDING]).
      */
     fun gruter(
         seed: Long,
@@ -50,13 +49,13 @@ object Scenarios {
         distance: Float = 250f,
         quality: Float = 1f,
         genome: Genome? = null,
-        feederRadius: Float = FEEDER_RADIUS,
+        places: Int = 0,
     ): World {
         val w = World(seed, rocks = false, genome = genome)
         w.predig(5)
         val s = w.surface
         for ((id, x) in listOf(0 to s.entranceX - distance, 1 to s.entranceX + distance)) {
-            s.addFood(feeder(w, id, x, quality, feederRadius = feederRadius))
+            s.addFood(feeder(w, id, x, quality, places = places))
         }
         repeat(foragers) { w.addAnt(Role.FORAGER) }
         return w
@@ -88,39 +87,32 @@ object Scenarios {
         return w
     }
 
-    /** The experiments' feeder drop (mm): 25 feeding places (FoodSource.spots). */
-    const val FEEDER_RADIUS = 8f
+    /**
+     * Gruter 2012 covered its feeders with 1, 9 or 27 feeding holes, and its model, validated
+     * against the colonies, turned them into crowding thresholds of 8, 72 and 216 ants, 8 per hole
+     * (research notes 04, 2.4). Little crowding (9 or 27 holes): the feeder leading after 5 minutes
+     * won 11 of 12 trials. High crowding (1 hole): no symmetry breaking (51 : 49), and crowded
+     * colonies moved most foragers to a better feeder within about 10 minutes; the model showed
+     * that colonies of about 150 foraging agents still switch at a threshold of 8. A covered
+     * feeder is reached only through its holes, so its places are set by them, not by the drop's
+     * edge. GruterScenarioTest's symmetry-breaking checks (30 and 150 foragers) model little
+     * crowding with 9 holes (72 places); its switching check models high crowding with 1 hole
+     * (8 places). The drop stays the 8 mm one of the other experiments, so only the crowding
+     * differs between the checks.
+     */
+    const val GRUTER_PLACES_PER_HOLE = 8
+    const val GRUTER_LOW_CROWDING = 9 * GRUTER_PLACES_PER_HOLE
+    const val GRUTER_HIGH_CROWDING = 1 * GRUTER_PLACES_PER_HOLE
 
     /**
-     * Gruter 2012's feeders were covered with 1, 9 or 27 feeding holes, and its model, validated
-     * against the colonies, turned the holes into crowding thresholds of 8, 72 and 216 ants
-     * (research notes 04, 2.4). Little crowding (9 or 27 holes): the feeder leading after 5
-     * minutes won 11 of 12 trials. High crowding (1 hole): no symmetry breaking (51 : 49), and
-     * crowded colonies moved most foragers to a better feeder within about 10 minutes; the model
-     * showed that colonies of about 150 foraging agents still switch at a threshold of 8.
-     * GruterScenarioTest's symmetry-breaking checks (30 and 150 foragers) model little crowding:
-     * a drop of 23 mm radius with 72 places (9 holes). Its switching check models high
-     * crowding with its 150 foragers: a drop of 2.5 mm radius with 8 places (1 hole).
-     * Places are the drop's circumference over FoodSource.SPOT_WIDTH.
+     * A honeydew feeder drop of 8 mm on the entrance's row at [x], 3 mm above the ground, reached
+     * within 15 mm; open (25 places, FoodSource.spots) unless [places] covers it.
      */
-    const val GRUTER_LOW_CROWDING = 72
-    const val GRUTER_HIGH_CROWDING = 8
-
-    /** The radius (mm) of a feeder drop with [places] feeding places around its edge (FoodSource.spots). */
-    fun feederRadius(places: Int): Float = (places * FoodSource.SPOT_WIDTH / (2.0 * PI)).toFloat()
-
-    /** The feeding reach beyond a feeder drop's edge (mm): 15 mm for the 8 mm drop, as since M1b-1. */
-    private const val FEEDER_REACH = 7f
-
-    /**
-     * A honeydew feeder drop of [feederRadius] on the entrance's row at [x]: a dome whose centre
-     * is 3/8 of its radius above the ground (3 mm for the 8 mm drop).
-     */
-    private fun feeder(w: World, id: Int, x: Float, quality: Float, loads: Int = Int.MAX_VALUE, feederRadius: Float = FEEDER_RADIUS): FoodSource {
+    private fun feeder(w: World, id: Int, x: Float, quality: Float, loads: Int = Int.MAX_VALUE, places: Int = 0): FoodSource {
         val s = w.surface
         return FoodSource(
-            id, FoodKind.HONEYDEW, x, s.entranceY, feederRadius + FEEDER_REACH, quality, loads = loads,
-            z = s.ground.height(x, s.entranceY) + feederRadius * 0.375f, bodyRadius = feederRadius,
+            id, FoodKind.HONEYDEW, x, s.entranceY, 15f, quality, loads = loads,
+            z = s.ground.height(x, s.entranceY) + 3f, bodyRadius = 8f, places = places,
         )
     }
 }

@@ -139,6 +139,12 @@ class ActionsTest {
         val late = onSurface(w, Role.FORAGER, 300f)
         assertEquals(1f, inputs(w, late)[Senses.NO_ROOM])
         assertTrue(late.turnedAway)
+        assertEquals(listOf(food), w.surface.deadEnds)
+        // Only for a while: once its trail has faded the place is ordinary ground again.
+        w.surface.forgetDeadEnds(food.emptiedTick + 1)
+        assertTrue(w.surface.deadEnds.isEmpty())
+        val later = onSurface(w, Role.FORAGER, 300f)
+        assertEquals(0f, inputs(w, later)[Senses.NO_ROOM])
     }
 
     @Test

@@ -19,6 +19,9 @@ enum class FoodKind { HONEYDEW, PREY }
  * Only [capacity] workers can feed at once (M2a Task 11a, the owner's decision of 2026-10-02):
  * ants feeding at a source cover it, and a forager that arrives when every place is taken cannot
  * feed. [feeders] counts the ants feeding now; `Primitives` takes and releases the places.
+ * Two simplifications: a forager is turned away on its first contact with a full source (it
+ * does not wait or come back for a place, Senses.NO_ROOM), and within one tick the ants think in
+ * the world's fixed order, so when one place is left the ant with the lower index takes it.
  */
 class FoodSource(
     val id: Int,
@@ -32,16 +35,24 @@ class FoodSource(
     val bodyRadius: Float = 0f,
     val stemRadius: Float = 0f,
     val stemBase: Float = 0f,
+    places: Int = 0,
 ) {
     val body: Blob? = if (bodyRadius > 0f) Blob(x, y, z, bodyRadius, bodyRadius, bodyRadius) else null
     val stem: Stem? = if (stemRadius > 0f) Stem(x, y, stemBase, z + STEM_ABOVE_CLUSTER, stemRadius) else null
     val hasStem: Boolean get() = stem != null
 
-    /** How many workers can feed here at once: [spots] of its modelled size. */
-    val capacity: Int = spots(bodyRadius, stemRadius, radius)
+    /**
+     * How many workers can feed here at once: the given places (a covered feeder, reached only
+     * through its holes), or else [spots] of its modelled size.
+     */
+    val capacity: Int = if (places > 0) places else spots(bodyRadius, stemRadius, radius)
 
     /** Workers feeding here now, at most [capacity]. */
     var feeders: Int = 0
+        internal set
+
+    /** The tick this source ran out, or -1 ([SurfaceMap.markEmptied]). */
+    var emptiedTick: Long = -1L
         internal set
 
     /** True while every feeding place is taken. */
@@ -66,13 +77,14 @@ class FoodSource(
          * The feeding places of a source from its modelled size, at least 1. Food on the ground
          * (a feeder's drop or a prey item, [bodyRadius] mm) is reached from its edge: its
          * circumference over [SPOT_WIDTH]. An aphid cluster on a stem is walked over: the cluster's
-         * surface (a sphere of [bodyRadius]) over [SPOT_AREA]. A source with no body (tests only)
-         * uses its feeding reach [radius] as the edge. Feeder of 8 mm: 25; prey of 3 to 8 mm: 9 to
-         * 25; aphid cluster of 8 mm: 101.
+         * exposed upper half (a hemisphere of [bodyRadius]; the lower half faces the stem and the
+         * leaf below, tag G) over [SPOT_AREA]. A source with no body (tests only) uses its feeding
+         * reach [radius] as the edge. Feeder of 8 mm: 25; prey of 3 to 8 mm: 9 to 25; aphid
+         * cluster of 8 mm: 50.
          */
         fun spots(bodyRadius: Float, stemRadius: Float, radius: Float): Int {
             val n = when {
-                stemRadius > 0f && bodyRadius > 0f -> 4.0 * PI * bodyRadius * bodyRadius / SPOT_AREA
+                stemRadius > 0f && bodyRadius > 0f -> 2.0 * PI * bodyRadius * bodyRadius / SPOT_AREA
                 bodyRadius > 0f -> 2.0 * PI * bodyRadius / SPOT_WIDTH
                 else -> 2.0 * PI * radius / SPOT_WIDTH
             }

@@ -104,6 +104,24 @@ class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean
         }
     }
 
+    /**
+     * Ground sources emptied within the last [DEAD_END_HALF_LIVES] trail half-lives, oldest first
+     * (M2a Task 11a): their places still turn foragers away (Senses.NO_ROOM). Grown by
+     * [markEmptied] and trimmed every tick by [forgetDeadEnds], so it stays short.
+     */
+    val deadEnds = ArrayList<FoodSource>()
+
+    /** Records that [food], just removed, ran out at [tick]; a plant's cluster never does. */
+    fun markEmptied(food: FoodSource, tick: Long) {
+        food.emptiedTick = tick
+        if (!food.hasStem) deadEnds += food
+    }
+
+    /** Drops dead ends emptied before [tick]. */
+    fun forgetDeadEnds(tick: Long) {
+        while (deadEnds.isNotEmpty() && deadEnds[0].emptiedTick < tick) deadEnds.removeAt(0)
+    }
+
     /** Removes a used-up [food], keeping it in [pastFoods] for rock placement. */
     fun removeFood(food: FoodSource) {
         if (foodList.remove(food)) {
@@ -153,10 +171,19 @@ class SurfaceMap(val seed: Long, params: AntParams = AntParams(), rocks: Boolean
         homeScent.step()
     }
 
-    private companion object {
-        const val PLANT_SALT = 99
-        const val PREY_SALT = 98
-        const val HOME_SCENT_CELL_MM = 25f
-        const val TRAIL_RELEASE = 1e-2f
+    companion object {
+        /**
+         * How long an emptied source's place stays a dead end, in trail half-lives: 3, about 8.7
+         * minutes at the reference decay of 0.004 per s. By then the trail that led there has fallen
+         * to an eighth: the colony's busiest trails (1 to 2.5 T in the M2a runs) are then at or
+         * below about 0.3 T, where a follower loses a trail (Actions.FOLLOW_EXIT), so nothing leads
+         * foragers to the place any more and one that arrives later is an ordinary searcher.
+         */
+        const val DEAD_END_HALF_LIVES = 3f
+
+        private const val PLANT_SALT = 99
+        private const val PREY_SALT = 98
+        private const val HOME_SCENT_CELL_MM = 25f
+        private const val TRAIL_RELEASE = 1e-2f
     }
 }

@@ -69,22 +69,16 @@ object Experiments {
         return GruterResult(small.map { it.get() }, large.map { it.get() }, crowded.map { it.get() })
     }
 
-    /** Gruter 2012's little-crowding feeder (9 holes), for the symmetry-breaking checks. */
-    private val LOW_CROWDING_RADIUS = Scenarios.feederRadius(Scenarios.GRUTER_LOW_CROWDING)
-
-    /** Gruter 2012's high-crowding feeder (1 hole), for the switching check. */
-    private val HIGH_CROWDING_RADIUS = Scenarios.feederRadius(Scenarios.GRUTER_HIGH_CROWDING)
-
-    /** 30 foragers: 20 minutes, then the mean share of searching foragers on a trail over 10. */
+    /** 30 foragers at little crowding (Scenarios.GRUTER_LOW_CROWDING): 20 minutes, then the mean share of searching foragers on a trail over 10. */
     fun gruterSmall(genome: Genome?, seed: Long, scale: Float = 1f): Double {
-        val w = Scenarios.gruter(seed, foragers = 30, genome = genome, feederRadius = LOW_CROWDING_RADIUS)
+        val w = Scenarios.gruter(seed, foragers = 30, genome = genome, places = Scenarios.GRUTER_LOW_CROWDING)
         run(w, minutes(20, scale))
         return following(w, minutes(10, scale))
     }
 
-    /** 150 foragers: 30 minutes, then following over 10 and the busier source's share of their feeds. */
+    /** 150 foragers at little crowding: 30 minutes, then following over 10 and the busier source's share of their feeds. */
     fun gruterLarge(genome: Genome?, seed: Long, scale: Float = 1f): Pair<Double, Double> {
-        val w = Scenarios.gruter(seed, foragers = 150, genome = genome, feederRadius = LOW_CROWDING_RADIUS)
+        val w = Scenarios.gruter(seed, foragers = 150, genome = genome, places = Scenarios.GRUTER_LOW_CROWDING)
         run(w, minutes(30, scale))
         val f = following(w, minutes(10, scale))
         val feeds = feedsSince(w, minutes(10, scale))
@@ -92,11 +86,11 @@ object Experiments {
     }
 
     /**
-     * 150 foragers on 0.6 sources with high crowding: 30 minutes, the loser becomes 1.0, 30 more;
+     * 150 foragers on 0.6 sources with high crowding (Scenarios.GRUTER_HIGH_CROWDING): 30 minutes, the loser becomes 1.0, 30 more;
      * the loser's share of the last 10 minutes' feeds.
      */
     fun gruterCrowded(genome: Genome?, seed: Long, scale: Float = 1f): Double {
-        val w = Scenarios.gruter(seed, foragers = 150, quality = 0.6f, genome = genome, feederRadius = HIGH_CROWDING_RADIUS)
+        val w = Scenarios.gruter(seed, foragers = 150, quality = 0.6f, genome = genome, places = Scenarios.GRUTER_HIGH_CROWDING)
         run(w, minutes(30, scale))
         val feeds = feedsSince(w, minutes(10, scale))
         val loser = if ((feeds[0] ?: 0) <= (feeds[1] ?: 0)) 0 else 1
@@ -163,22 +157,22 @@ object Experiments {
         )
         val beforeTicks = minutes(10, scale) * TICKS_PER_MINUTE.toLong()
         val afterTicks = minutes(DEPLETION_AFTER, scale) * TICKS_PER_MINUTE.toLong()
+        require(afterTicks <= com.bydesigninteractive.ant.sim.FEED_WINDOW_TICKS) { "the window after outlasts the kept feed events" }
         val limit = minutes(60, scale)
         var gone = -1L
-        var before = 0
         var m = 0
-        while ((gone < 0L && m < limit) || (gone >= 0L && w.tick < gone + afterTicks)) {
+        // Whole minutes until the rich feeder is gone (it went with its last load: the tick of its
+        // last feed, not the minute's end).
+        while (gone < 0L && m < limit) {
             run(w, 1)
             m++
-            // The rich feeder went with its last load: the tick of its last feed, not the minute's end.
-            // The feeds before are counted now: World keeps only the last FEED_WINDOW_TICKS of them.
-            if (gone < 0L && w.surface.foods.none { it.id == 0 }) {
-                val g = w.feedEvents.lastOrNull { it.foodId == 0 }?.tick ?: w.tick
-                gone = g
-                before = w.feedEvents.count { it.foodId == 0 && it.tick >= g - beforeTicks && it.tick < g }
-            }
+            if (w.surface.foods.none { it.id == 0 }) gone = w.feedEvents.lastOrNull { it.foodId == 0 }?.tick ?: w.tick
         }
         if (gone < 0L) return 0.0
+        // World keeps only the last FEED_WINDOW_TICKS of feed events, so the feeds before are
+        // counted now, and the window after ends on its exact tick.
+        val before = w.feedEvents.count { it.foodId == 0 && it.tick >= gone - beforeTicks && it.tick < gone }
+        while (w.tick < gone + afterTicks) w.step()
         val after = w.feedEvents.count { it.foodId == 1 && it.tick >= gone && it.tick < gone + afterTicks }
         return if (before == 0) 0.0 else (after.toDouble() / afterTicks) / (before.toDouble() / beforeTicks)
     }

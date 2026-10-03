@@ -42,6 +42,7 @@ internal object Primitives {
                 food.loads--
                 if (food.loads <= 0) {
                     w.surface.removeFood(food)
+                    w.surface.markEmptied(food, w.tick)
                     abandonFeeds(w, food, a)
                 }
             }
@@ -51,9 +52,11 @@ internal object Primitives {
 
     /**
      * Stops [a]'s feed without food and releases its place: for a source that has run out, and for
-     * any later way a feed can be cut short (an ant's death or removal must call this first).
+     * any other way a feed can be cut short (an ant's death or removal must call this first). Does
+     * nothing if the ant is not feeding: only a running FEED holds a place.
      */
     fun stopFeeding(a: Ant) {
+        if (a.action != Action.FEED) return
         val food = a.food ?: return
         releaseSpot(food)
         a.food = null
@@ -67,8 +70,10 @@ internal object Primitives {
         for (b in w.ants) if (b !== taker && b.action == Action.FEED && b.food === food) stopFeeding(b)
     }
 
+    /** Frees one of [food]'s places; releasing a place nobody holds is a bug, so it fails loudly. */
     private fun releaseSpot(food: FoodSource) {
-        if (food.feeders > 0) food.feeders--
+        check(food.feeders > 0) { "food ${food.id}: a feeding place released twice" }
+        food.feeders--
     }
 
     /** True if [plant]'s aphid cluster is within its feeding reach of the ant. */

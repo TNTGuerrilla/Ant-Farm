@@ -303,9 +303,9 @@ internal object Senses {
         x[RING] = top / (top + w.params.trailThreshold)
     }
 
-    /** True if the ant stands within the feeding reach of a ground source that has run out ([SurfaceMap.pastFoods]). */
+    /** True if the ant stands within the feeding reach of a ground source that ran out recently ([SurfaceMap.deadEnds]). */
     private fun atUsedUpSource(s: com.bydesigninteractive.ant.sim.world.SurfaceMap, a: Ant): Boolean {
-        val past = s.pastFoods
+        val past = s.deadEnds
         for (i in past.indices) {
             val f = past[i]
             if (f.hasStem) continue

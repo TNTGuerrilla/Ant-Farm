@@ -7,30 +7,54 @@ import com.bydesigninteractive.ant.sim.ant.Space
 import com.bydesigninteractive.ant.sim.search.Experiments
 import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.ln
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
  * The exit trail choice between two live trails (M2a Task 11a): Deneubourg's nonlinear choice
- * at the junction (simulation reference section 5; Czaczkes 2017: 74 to 83% per junction). Two
- * fixed straight trails (no decay, no food) leave the entrance west and east, one 4 times the
- * other; 150 foragers are released at once and each one's side is recorded when it first gets
- * 80 mm from the entrance. With n about 2 at least 70% must go out along the stronger trail (82%
- * measured on 8 seeds in the 2026-10-02 diagnosis). One run with the stronger trail west and one
- * with it east, so a side bias cannot pass the test.
+ * at the junction, (k + s)^n with n about 2 (simulation reference section 5; Czaczkes 2017: 74
+ * to 83% per junction). Two fixed straight trails (no decay, no food) leave the entrance west and
+ * east, one 4 times the other; 150 foragers are released at once and each one's side is recorded
+ * when it first gets 80 mm from the entrance.
+ *
+ * A linear choice (n = 1) sends 4 times as many out along the stronger trail as along the weaker;
+ * the test asks for at least 8 times (4^1.5), pooled over 8 releases: seeds 1 to 4, each with the
+ * stronger trail west and then east, so a side bias cannot pass. One release is not 150
+ * independent choices (followers meet each other and the footprints of those ahead, and the
+ * ground differs by seed), so single releases scatter: in the 2026-10-02 fix round the exponent
+ * of one release ranged from 1.0 to 3.1 at 4 : 1 over seeds 1 to 8, and pooling all 16 gave
+ * 1938 against 170, an n of 1.76. Seeds 1 to 4 pooled give about 12 to 1 (n about 1.8).
  */
 class ExitChoiceTest {
     @Test
-    fun mostForagersLeaveAlongTheStrongerOfTwoTrails() {
-        val west = exits(seed = 1, westT = 4f, eastT = 1f)
-        val east = exits(seed = 2, westT = 1f, eastT = 4f)
-        val stronger = west[0] + east[1]
-        val weaker = west[1] + east[0]
-        val total = west.sum() + east.sum()
-        val share = stronger.toDouble() / total
-        println("exit choice at 4 : 1: stronger $stronger, weaker $weaker, neither ${total - stronger - weaker} of $total (stronger share ${"%.3f".format(share)})")
-        assertTrue(share >= 0.7, "stronger trail share $share")
-        assertTrue(west[0] > west[1] && east[1] > east[0], "per run: west-strong $west, east-strong $east")
+    fun aStrongerTrailWinsMoreThanInProportion() {
+        val pool = Executors.newFixedThreadPool(minOf(8, Runtime.getRuntime().availableProcessors()))
+        val runs = try {
+            (1L..4L).flatMap { s -> listOf(s to true, s to false) }
+                .map { (s, westStrong) -> pool.submit(Callable { s to (westStrong to exits(s, if (westStrong) 4f else 1f, if (westStrong) 1f else 4f)) }) }
+                .map { it.get() }
+        } finally {
+            pool.shutdown()
+        }
+        var stronger = 0
+        var weaker = 0
+        var neither = 0
+        for ((seed, r) in runs) {
+            val (westStrong, c) = r
+            val s = if (westStrong) c[0] else c[1]
+            val wk = if (westStrong) c[1] else c[0]
+            println("exit choice at 4 : 1, seed $seed, stronger ${if (westStrong) "west" else "east"}: stronger $s, weaker $wk, neither ${c[2]}")
+            stronger += s
+            weaker += wk
+            neither += c[2]
+            assertTrue(s > wk, "seed $seed: stronger $s, weaker $wk")
+        }
+        val n = ln(stronger.toDouble() / weaker) / ln(4.0)
+        println("exit choice at 4 : 1 pooled: stronger $stronger, weaker $weaker, neither $neither, exponent ${"%.2f".format(n)}")
+        assertTrue(stronger >= 8 * weaker, "stronger $stronger against weaker $weaker (n $n)")
     }
 
     /** West, east and neither counts for one release of 150 foragers with trails of [westT] and [eastT] times T. */

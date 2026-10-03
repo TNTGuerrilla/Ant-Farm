@@ -165,6 +165,12 @@ class World(
         a.arrived = false
     }
 
+    /** Ticks an emptied source stays a dead end: [SurfaceMap.DEAD_END_HALF_LIVES] half-lives of the trail decay. */
+    private val deadEndTicks: Long = run {
+        val decay = if (params.trailDecay > 0f) params.trailDecay else AntParams().trailDecay
+        (SurfaceMap.DEAD_END_HALF_LIVES * kotlin.math.ln(2.0) / decay / DT).toLong()
+    }
+
     fun gaussian(): Float = rng.nextGaussian().toFloat()
 
     fun exponential(mean: Float): Float = -ln(1f - rng.nextFloat()) * mean
@@ -194,6 +200,7 @@ class World(
             }
         }
         tick++
+        surface.forgetDeadEnds(tick - deadEndTicks)
         while (feedEvents.isNotEmpty() && feedEvents.first().tick < tick - FEED_WINDOW_TICKS) feedEvents.removeFirst()
         if (p != null) {
             p.ticks++

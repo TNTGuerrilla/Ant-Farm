@@ -42,14 +42,14 @@ class GruterDiagnostic {
         val m = Experiments
         return when (run) {
             "small" -> {
-                val w = Scenarios.gruter(seed, foragers = 30, feederRadius = Scenarios.feederRadius(Scenarios.GRUTER_LOW_CROWDING))
+                val w = Scenarios.gruter(seed, foragers = 30, places = Scenarios.GRUTER_LOW_CROWDING)
                 m.run(w, m.minutes(20, scale))
                 val s = Sampler(w)
                 s.run(m.minutes(10, scale))
                 "small seed $seed: " + s.line() + "; " + s.profile()
             }
             "large" -> {
-                val w = Scenarios.gruter(seed, foragers = 150, feederRadius = Scenarios.feederRadius(Scenarios.GRUTER_LOW_CROWDING))
+                val w = Scenarios.gruter(seed, foragers = 150, places = Scenarios.GRUTER_LOW_CROWDING)
                 m.run(w, m.minutes(30, scale))
                 val s = Sampler(w)
                 s.run(m.minutes(10, scale))
@@ -58,7 +58,7 @@ class GruterDiagnostic {
                 String.format(Locale.ROOT, "large seed %d: share %.3f feeds %s; ", seed, share, feeds.toSortedMap()) + s.line() + "; " + s.profile()
             }
             "crowded" -> {
-                val w = Scenarios.gruter(seed, foragers = 150, quality = 0.6f, feederRadius = Scenarios.feederRadius(Scenarios.GRUTER_HIGH_CROWDING))
+                val w = Scenarios.gruter(seed, foragers = 150, quality = 0.6f, places = Scenarios.GRUTER_HIGH_CROWDING)
                 m.run(w, m.minutes(30, scale))
                 val before = m.feedsSince(w, m.minutes(10, scale))
                 val loser = if ((before[0] ?: 0) <= (before[1] ?: 0)) 0 else 1
