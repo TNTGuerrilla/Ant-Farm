@@ -40,6 +40,7 @@ class BenchmarkActivity : Activity() {
         thread(name = "benchmark") {
             try {
                 Log.i(APP_LOG_TAG, "BENCH start scenario $scenario mode $mode warmup $warmup measure $measure speed $speed seed $seed")
+                Log.i(APP_LOG_TAG, "BENCH genome ${com.bydesigninteractive.ant.sim.brain.Instinct.source}")
                 val world = when (scenario) {
                     "starter" -> Scenarios.starter(seed)
                     "colony1000" -> Scenarios.colony1000(seed)

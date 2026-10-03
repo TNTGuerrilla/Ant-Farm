@@ -11,6 +11,6 @@ class InstinctTest {
         assertEquals(Senses.LAYOUT, g.layout)
         assertEquals(Senses.COUNT, g.inputs)
         assertEquals(Outputs.COUNT, g.outputs)
-        assertTrue(Instinct.source == "resource" || Instinct.source == "seed", Instinct.source)
+        assertEquals("resource", Instinct.source)
     }
 }
