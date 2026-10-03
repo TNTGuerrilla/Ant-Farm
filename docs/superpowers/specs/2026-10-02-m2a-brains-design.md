@@ -122,11 +122,11 @@ A ranked markdown report with every measurement per variant, and the winning gen
 - HIDDEN 16 grew to 23 (1,807 weights): the seed circuits, relays and the exit and feeding senses needed more units.
 - Personal variation scales each hidden unit's input row by one factor, not each weight: mirror pairs stay balanced, so individuals do not drift.
 - The nest-exit trail choice became a brain sense (entrance trail bearing and strength) with a nonlinear choice, not innate code: owner decision, and the root cause of the first search's failure.
-- Feeding places sized by the food's accessible surface, plus a NO_ROOM input: crowding at food needed to be sensed by the brain.
+- Feeding places sized by the food's accessible surface, plus a NO_ROOM input: crowded foragers that cannot feed and search elsewhere are how Gruter 2012's colonies switch sources; unlimited feeders removed that mechanism (owner decision on how places are sized).
 - Forager share is unscored until M3: worker roles are fixed until castes exist.
-- A Y-choice trial measures naive trail following: counting marked trails alone could not show whether naive ants follow them.
+- A Y-choice trial measures naive trail following: Gruter 2011's 62 to 70% is a branch choice at a fork, while the first measure (time spent on a trail after meeting it) measured something else and had too few encounters to be more than noise.
 - Drift is scored: a brain that turns steadily one way must lose to one that does not.
-- The Gruter and depletion gate terms are part of screening: otherwise the search optimised the litmus score and lost the gates.
+- The Gruter and depletion gate terms are part of screening: otherwise nothing in screening rewarded the checks the winner must pass, and the first full checks failed them.
 - Mutation is tied across mirror pairs (`brain/Mirror.kt`): independent mutation broke the pairing that keeps steering from drifting.
 - The depletion window is 30 minutes: owner decision, so the switch has time to show.
 - The TV cost target (25 ms per tick average for colony1000) was waived: owner decision; 34.6 ms measured, revisit after launch.
